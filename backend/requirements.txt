@@ -1,0 +1,6 @@
+fastapi==0.95.2
+uvicorn
+langdetect
+pycountry
+trafilatura
+firebase-admin
