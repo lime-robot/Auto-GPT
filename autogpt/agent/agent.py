@@ -1,4 +1,5 @@
 import signal
+import threading
 import sys
 from datetime import datetime
 
@@ -105,7 +106,9 @@ class Agent:
                 )
                 self.next_action_count = 0
 
-        signal.signal(signal.SIGINT, signal_handler)
+        # Only set the signal handler if we're in the main thread
+        if threading.current_thread() == threading.main_thread():
+            signal.signal(signal.SIGINT, signal_handler)
 
         while True:
             # Discontinue if continuous limit is reached

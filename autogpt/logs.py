@@ -33,6 +33,9 @@ class Logger(metaclass=Singleton):
 
         console_formatter = AutoGptFormatter("%(title_color)s %(message)s")
 
+        # call back function for log
+        self.log_callback_func = None
+        
         # Create a handler for console which simulate typing
         self.typing_console_handler = TypingConsoleHandler()
         self.typing_console_handler.setLevel(logging.INFO)
@@ -102,6 +105,9 @@ class Logger(metaclass=Singleton):
         self.typing_logger.log(
             level, content, extra={"title": title, "color": title_color}
         )
+        
+        if self.log_callback_func:
+            self.log_callback_func(title, content)
 
     def debug(
         self,
@@ -178,6 +184,10 @@ class Logger(metaclass=Singleton):
         this_files_dir_path = os.path.dirname(__file__)
         log_dir = os.path.join(this_files_dir_path, "../logs")
         return os.path.abspath(log_dir)
+    
+    def set_callback(self, log_callback_func):
+        self.log_callback_func = log_callback_func
+
 
 
 """
@@ -250,7 +260,11 @@ def remove_color_codes(s: str) -> str:
 
 logger = Logger()
 
-
+# update the logger with the new callback function
+def update_logger(log_callback_func):
+    logger.set_callback(log_callback_func)
+    
+    
 def print_assistant_thoughts(
     ai_name: object,
     assistant_reply_json_valid: object,

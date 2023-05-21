@@ -6,6 +6,8 @@ from typing import NoReturn
 from autogpt.commands.command import command
 from autogpt.logs import logger
 
+import threading
+
 
 @command(
     "task_complete",
@@ -23,4 +25,5 @@ def task_complete(reason: str) -> NoReturn:
             improve the code.
     """
     logger.info(title="Shutting down...\n", message=reason)
-    quit()
+    if threading.current_thread() == threading.main_thread():
+        quit()
