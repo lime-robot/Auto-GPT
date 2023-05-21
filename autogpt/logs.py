@@ -103,7 +103,6 @@ class Logger(metaclass=Singleton):
             content = ""
 
         if self.log_callback_func:
-            print("Sent: ", title, content)
             self.log_callback_func(title, content)
 
         self.typing_logger.log(
