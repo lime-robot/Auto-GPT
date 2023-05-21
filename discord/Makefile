@@ -1,7 +1,6 @@
 VENV = .venv
 PYTHON = $(VENV)/bin/python3
 PIP = $(VENV)/bin/pip
-UVICORN = $(VENV)/bin/uvicorn
 
 include .env
 export
@@ -9,10 +8,8 @@ export
 export PYTHONPATH := $(PYTHONPATH):..
 
 app: $(VENV)/bin/activate
-	$(UVICORN) app:app --reload --port 1024 
+	$(PYTHON) app.py
 
-api: $(VENV)/bin/activate
-	$(PYTHON) api.py auto_gpt_workspace/2023-05-21_07-51-26_UMM3p
 
 $(VENV)/bin/activate: requirements.txt ../requirements.txt
 	python3 -m venv $(VENV)

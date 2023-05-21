@@ -1,21 +1,22 @@
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
-from fastapi.responses import JSONResponse
-from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-
+import asyncio
+import datetime
+import json
 import os
 import random
-import string
-import datetime
-import time
 import re
-import json
+import string
 import subprocess
+import tempfile
+import time
+from queue import Queue
 
-from firebase_util import verify_id_token
+from autogpt.logs import logger, update_logger
+from autogpt.main import run_auto_gpt
 
 app = FastAPI()
-PYTHON = '/Users/hunkim/Documents/work/chatgpt/07-auto-gpt/stream_rest_api/.venv/bin/python'
+
+# Join the current directory with .venv/bin/python
+PYTHON = os.path.join(os.getcwd(), ".venv", "bin", "python")
 
 # CORS
 origins = [
@@ -31,24 +32,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def prepare(content):
+
+class MessageQueue:
+    def __init__(self):
+        self.queue = Queue()
+
+    def put(self, message):
+        self.queue.put(message)
+
+    def get(self):
+        return self.queue.get()
+
+def prepare_and_return_folder(content):
     content = re.sub(r'<@U[A-Z0-9]+>', '', content)
     now = datetime.datetime.now()
     date_str = now.strftime("%Y-%m-%d_%H-%M-%S")
-    length = 5
-    random_str = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(length))
-    folder_name = date_str + "_" + random_str
-    folder = os.path.join(os.getcwd(), 'auto_gpt_workspace', folder_name)
-    os.makedirs(folder, exist_ok=True)
+
+    # Create a temporary directory with a unique name
+    folder = tempfile.mkdtemp(prefix=date_str + "_", dir=os.path.join(os.getcwd(), 'auto_gpt_workspace'))
+
     ai_settings = f"""ai_name: AutoAskup
 ai_role: an AI that achieves below goals.
 ai_goals:
 - {content}
 - Terminate if above goal is achieved.
-api_budget: 3"""
+api_budget: 1"""
+
     with open(os.path.join(folder, "ai_settings.yaml"), "w") as f:
         f.write(ai_settings)
+
     return folder
+
 
 
 def format_output(bytes):
@@ -66,8 +80,39 @@ def format_output(bytes):
         return text
     # return text
 
+
+def run_auto_gpt_wrapper(folder=None, stream_log_call_back=None):
+    print("RUNNING AUTO GPT")
+
+    if stream_log_call_back:
+        update_logger(log_callback_func=stream_log_call_back)
+
+    logger.typewriter_log("DONE")
+
+    run_auto_gpt(
+            continuous=True,
+            continuous_limit=None,
+            ai_settings=os.path.join(folder, "ai_settings.yaml"),
+            prompt_settings='prompt_settings.yaml',
+            skip_reprompt=False,
+            speak=False,
+            debug=False,
+            gpt3only=True,
+            gpt4only=False,
+            memory_type=None,
+            browser_name=None,
+            allow_downloads=False,
+            skip_news=True,
+            workspace_directory=folder,
+            install_plugin_deps=False
+        )
+
+
+    logger.typing_logger("DONE")
+
+
 @app.post("/auto_gpt")
-async def run_autogpt_slack(request: Request):
+async def run_autogpt_slack(request: Request, background_tasks: BackgroundTasks):
     # Get id_token from request header Authorization
     id_token = request.headers.get("authorization", {})
 
@@ -86,55 +131,36 @@ async def run_autogpt_slack(request: Request):
 
     body = await request.body()
     data = json.loads(body)
+    folder = prepare_and_return_folder(data['order'])
 
-    main_dir = os.path.dirname(os.getcwd())
-    sub_dir = "stream_rest_api"
+    # Create a message queue
+    message_queue = MessageQueue()
 
-    print(main_dir)
-    folder = prepare(data['order'])
-    process = subprocess.Popen(
-        [PYTHON, os.path.join(main_dir, sub_dir, 'api.py'), os.path.join(main_dir, folder)],
-        cwd=main_dir,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
+    def stream_log_call_back(title, content):
+        print("STREAM LOG CALLBACK", title, content)
+        message_queue.put({'type': 'log', 'content': title + content.strip()})
 
+    update_logger(log_callback_func=stream_log_call_back)
+    logger.typewriter_log("Running AutoGPT...")
 
+    # Start the background task simulating a long-running process
+    executor = ProcessPoolExecutor(max_workers=2)
+    background_tasks.add_task(executor.submit(run_auto_gpt_wrapper))
+    background_tasks.add_task(executor.submit(simple_function))
 
-    async def stream():
-        started_loop = False
+    print("OOO")
+
+    async def event_stream():
         while True:
-            output = process.stdout.readline()
-            if (not output) and process.poll() is not None:
+            print("Waiting for message")
+            message = message_queue.get()
+            print("MESSAGE", message)
+            if message['content'].startswith('DONE'):
                 break
-            if output:
-                print(output.decode().strip())
-                output = format_output(output)
-                if output is None:
-                    continue
-                if output.startswith('THOUGHTS'):
-                    started_loop = True
-                    yield f"data: {json.dumps({'type': 'thinking'})}\n\n"
-                else:
-                    yield f"data: {json.dumps({'type': 'log', 'content': output.strip()})}\n\n"
-                if not started_loop:
-                    continue
-
-        # Send files as part of the stream
-        for fname in os.listdir(folder):
-            if fname not in ['ai_settings.yaml', 'auto-gpt.json', 'file_logger.txt']:
-                with open(os.path.join(folder, fname), 'r') as f:
-                    content = f.read()
-                    yield f"data: {json.dumps({'type': 'result', 'title': fname, 'content': content})}\n\n"
-
-
+            yield f"data: {json.dumps(message)}\n\n"
         yield "data: [DONE]\n\n"
 
-    return StreamingResponse(stream(), media_type="text/plain")
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.get("/")
-async def index():
-    return 'AutoAskUp'
 
-# nohup uvicorn app:app --host 0.0.0.0 --port 30207 --reload &
