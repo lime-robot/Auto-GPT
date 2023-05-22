@@ -63,7 +63,7 @@ def run_auto_gpt_wrapper(folder=None, stream_log_call_back=None):
         skip_reprompt=False,
         speak=False,
         debug=False,
-        gpt3only=False,
+        gpt3only=True,
         gpt4only=False,
         memory_type=None,
         browser_name=None,

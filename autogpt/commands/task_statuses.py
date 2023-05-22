@@ -25,5 +25,4 @@ def task_complete(reason: str) -> NoReturn:
             improve the code.
     """
     logger.info(title="Shutting down...\n", message=reason)
-    if threading.current_thread() == threading.main_thread():
-        quit()
+    quit()
