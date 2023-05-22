@@ -6,8 +6,6 @@ from typing import NoReturn
 from autogpt.commands.command import command
 from autogpt.logs import logger
 
-import threading
-
 
 @command(
     "task_complete",
