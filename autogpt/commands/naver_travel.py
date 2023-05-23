@@ -58,7 +58,6 @@ def load_driver():
     "naver_map_latlng2kor_address",
     "convert latitude and longitude to korean address using naver map",
     '"latitude": "<latitude>", "longitude": "<longitude>"',
-    bool(CFG.google_api_key),
 )
 def naver_map_latlng2kor_address(latitude: float, longitude: float) -> str:
     """
@@ -95,3 +94,51 @@ def naver_map_latlng2kor_address(latitude: float, longitude: float) -> str:
         'address_road': address_road
     }
     return json.dumps(address, ensure_ascii=False)
+
+
+@command(
+    "get_weather_info_at_kor_address",
+    "get weather information at korean address(ex: jibun(지번), road(도로명) etc) using naver map",
+    '"address": "<address>"',
+)
+def get_weather_info_at_kor_address(address):
+    """
+    address: 도로명, 지번
+    """
+    driver = load_driver()
+    driver.get("https://map.naver.com/v5/search")
+
+    # wait until the page is loaded
+    driver.implicitly_wait(3)
+
+    # search for the query and click enter
+    search_box = driver.find_element_by_css_selector("div.input_box>input.input_search")
+    search_box.send_keys(address)
+    search_box.send_keys(Keys.ENTER)
+    place_infos = driver.find_elements(By.XPATH, '//div[@class="end_inner place"]')
+    weather_info = place_infos[0].get_attribute('outerHTML')
+
+    soup = BeautifulSoup(weather_info, 'html.parser')
+
+    weather_data = {}
+
+    current_box = soup.find('div', {'class': 'current_box'})
+    weather_data['current_temperature'] = current_box.find('span', {'class': 'temperature'}).text
+    weather_data['current_status'] = current_box.find('span', {'class': 'today_subtitle'}).text
+    weather_data['current_wind'] = current_box.find('dd', {'class': 'measure_text'}).text
+
+    weekly_box = soup.find('table')
+    days = [th.text for th in weekly_box.find_all('th')]
+    weather_statuses = [td.find('span').text for td in weekly_box.find_all('td')]
+    temperatures = [td.find('div', {'class': 'week_text_box'}).text for td in weekly_box.find_all('td')]
+
+    weather_data['weekly'] = []
+    for day, status, temperature in zip(days, weather_statuses, temperatures):
+        weather_data['weekly'].append({
+            'day': day,
+            'status': status,
+            'temperature': temperature,
+        })
+
+    # output in JSON format
+    return json.dumps(weather_data, ensure_ascii=False)
