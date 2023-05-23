@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import urllib
+from urllib.request import Request, urlopen
 
 import re
 from pathlib import Path
@@ -55,11 +57,11 @@ def load_driver():
     return driver
 
 @command(
-    "naver_map_latlng2kor_address",
-    "convert latitude and longitude to korean address using naver map",
+    "latlng2kor_address",
+    "convert latitude and longitude to korean address",
     '"latitude": "<latitude>", "longitude": "<longitude>"',
 )
-def naver_map_latlng2kor_address(latitude: float, longitude: float) -> str:
+def latlng2kor_address(latitude: float, longitude: float) -> str:
     """
     latitdue and longitude to address 지번, 도로명
     """
@@ -97,8 +99,45 @@ def naver_map_latlng2kor_address(latitude: float, longitude: float) -> str:
 
 
 @command(
+    "kor_address2latlng",
+    "convert korean address(ex: jibun(지번), road(도로명) etc) to latitude and longitude",
+    '"address": "<address>"',
+)
+def kor_address2latlng(address):
+    client_id = CFG.naver_api_id
+    client_secret = CFG.naver_api_client_secret 
+    url = f"https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" \
+    			+ urllib.parse.quote(address)
+    
+    request = urllib.request.Request(url)
+    request.add_header('X-NCP-APIGW-API-KEY-ID', client_id)
+    request.add_header('X-NCP-APIGW-API-KEY', client_secret)
+    response = urlopen(request)
+    res = response.getcode()
+    
+    if (res == 200):
+        response_body = response.read().decode('utf-8')
+        response_body = json.loads(response_body)
+
+        if response_body['meta']['totalCount'] == 1 : 
+            lng = response_body['addresses'][0]['x']
+            lat = response_body['addresses'][0]['y']
+            
+            return {
+                'lat': lat,
+                'lng': lng,
+            }
+        else:
+            print('address does not exist')
+        
+    else:
+        print(f'address: {address} Error Code: {res}')
+
+
+
+@command(
     "get_weather_info_at_kor_address",
-    "get weather information at korean address(ex: jibun(지번), road(도로명) etc) using naver map",
+    "get weather information at korean address(ex: jibun(지번), road(도로명) etc)",
     '"address": "<address>"',
 )
 def get_weather_info_at_kor_address(address):
