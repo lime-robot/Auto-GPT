@@ -133,6 +133,7 @@ def run_auto_gpt(
         "autogpt.commands.file_operations",
         #"autogpt.commands.git_operations",
         "autogpt.commands.google_search",
+        "autogpt.commands.naver_travel",
         #"autogpt.commands.image_gen",
         #"autogpt.commands.improve_code",
         #"autogpt.commands.twitter",
