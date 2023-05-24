@@ -134,6 +134,89 @@ def kor_address2latlng(address):
         print(f'address: {address} Error Code: {res}')
 
 
+@command(
+    "tourism_places_nearby_kor_address",
+    "get tourism place info nearby korean address. info includes name, address, phone number, etc",
+    '"address": "<address>"',
+)
+def tourism_places_nearby_kor_address(address: str) -> list:
+    driver = load_driver()
+    driver.get("https://map.naver.com/v5/search")
+
+    # wait until the page is loaded
+    driver.implicitly_wait(3)
+
+    # search for the query and click enter
+    search_box = driver.find_element_by_css_selector("div.input_box>input.input_search")
+    search_box.send_keys(address)
+    search_box.send_keys(Keys.ENTER)
+
+    # 네이버 지도 기능!! -> 가볼만한 곳
+    place_infos = driver.find_elements(By.XPATH, '//div[@class="end_inner place ng-star-inserted"]')
+    recommended_places = place_infos[1]
+
+    # save current url to reload
+    current_url = driver.current_url
+
+    places = recommended_places.find_elements_by_xpath('ul[@class="list_space"]/li')
+
+    tourism_places = []
+    for place_i in range(len(places)):
+
+        # reload the page every time to prevent stale element reference error
+        place_infos = driver.find_elements(By.XPATH, '//div[@class="end_inner place ng-star-inserted"]')
+        recommended_places = place_infos[1]
+        places = recommended_places.find_elements_by_xpath('ul[@class="list_space"]/li')
+        place = places[place_i]
+
+        html_doc = place.get_attribute('outerHTML')
+        soup = BeautifulSoup(html_doc, 'html.parser')
+
+        place_name = soup.find('strong', {'class': 'space_title'}).get_text()
+        place_type = soup.find('p', {'class': 'space_text'}).get_text()
+
+        link = place.find_element_by_xpath('.//div[@class="space_thumb_box"]')
+        driver.execute_script("arguments[0].click();", link)
+
+        place_url = driver.current_url
+        place_id = place_url.split('place')[-1].split('?')[0][1:]
+
+        # wait until the page is loaded
+        driver.get(current_url)
+        driver.implicitly_wait(3)
+
+        tourism_places.append({
+            'place_id': place_id,
+            'place_url': place_url,
+            'place_name': place_name,
+            'place_type': place_type,
+        })
+
+    driver.quit()
+
+    # get place meta information
+    place_infos = []
+    for place in tourism_places:
+        place_id = place['place_id']
+        place_url = place['place_url']
+
+        place_header = get_place_header(place_id)
+        place_main_info = get_place_main_info(place_id)
+        place_review = get_place_reviews(place_id)
+
+        place_info = {
+            'place_id': place['place_id'],
+        }
+        place_info['place_url'] = place_url
+
+        place_info.update(place_header)
+        place_info.update(place_main_info)
+        place_info.update(place_review)
+
+        place_infos.append(place_info)
+
+    return place_infos 
+
 
 @command(
     "get_weather_info_at_kor_address",
@@ -181,3 +264,168 @@ def get_weather_info_at_kor_address(address):
 
     # output in JSON format
     return json.dumps(weather_data, ensure_ascii=False)
+
+
+def get_place_header(place_id):
+
+    place_url = f"https://m.place.naver.com/place/{place_id}/home"
+
+    driver = load_driver()
+    place_info = {
+        'name': None,
+        'type': None,
+        'rating': None,
+        'n_visitor_reviews': None,
+        'n_blog_reviews': None,
+    }
+    
+    driver.get(place_url)
+    driver.implicitly_wait(3)
+
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+    # name / description
+    spans = soup.find('div', {'id': '_title'}).find_all('span')
+    place_info['name'] = spans[0].text
+    if len(spans) > 1:
+        place_info['type'] = spans[1].text
+
+    # ratings
+    for span in soup.find('div', {'class': 'place_section'}).find_all('span'):
+        text = span.text
+        if text.startswith('별점') and (span.find('em') is not None):
+            place_info['rating'] = text.replace('별점', '').strip()
+        if text.startswith('방문자리뷰') and (span.find('em') is not None):
+            place_info['n_visitor_reviews'] = text.replace('방문자리뷰', '').strip()
+        elif text.startswith('블로그리뷰') and (span.find('em') is not None):
+            place_info['n_blog_reviews'] = text.replace('블로그리뷰', '').strip()
+
+    driver.quit()
+
+    return place_info
+
+def get_place_main_info(place_id):
+
+    place_url = f"https://m.place.naver.com/place/{place_id}/home"
+
+    driver = load_driver()
+    driver.get(place_url)
+    driver.implicitly_wait(3)
+
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    place_info = soup.find_all('div', class_='place_section_content')[0]
+
+    # 주소
+    address_tag = place_info.find('span', text='주소')
+    if address_tag:
+        address = address_tag.parent.next_sibling.get_text().split('지도')[0].strip()
+    else:
+        address = None
+
+    # 영업 시간
+    operation_time_tag = soup.find('span', text='영업시간')
+    if operation_time_tag:
+        operation_time = operation_time_tag.parent.next_sibling.get_text()
+        operation_time = operation_time.split('펼쳐보기')
+    else:
+        operation_time = None
+
+    # 가격표
+    price_tag = soup.find('span', text='가격 정보 수정 제안')
+    if price_tag:
+        price = price_tag.parent.next_sibling.get_text()
+        if price.startswith('가격표 사진을 올려주세요'):
+            price = None
+    else:
+        price = None
+
+    # 편의
+    convenience_tag = soup.find('span', text='편의')
+    if convenience_tag:
+        convenience = convenience_tag.parent.next_sibling.get_text()
+    else:
+        convenience = None
+
+    # 홈페이지
+    homepage_tag = soup.find('span', text='홈페이지')
+    if homepage_tag:
+        homepage = homepage_tag.parent.next_sibling.get_text()
+
+        # remove 블로그 and 인스타그램
+        homepage = re.sub(r'블로그|인스타그램', '', homepage)
+    else:
+        homepage = None
+
+    # 전화번호
+    phone_tag = soup.find('span', text='전화번호')
+    if phone_tag:
+        phone = phone_tag.parent.next_sibling.get_text()
+    else:
+        phone = None
+
+    # 키워드
+    keyword_tag = soup.find('span', text='키워드')
+    if keyword_tag:
+        keyword = keyword_tag.parent.next_sibling.get_text()
+        keyword = keyword.split('#')
+        if len(keyword) > 1:
+            keyword = keyword[1:]
+    else:
+        keyword = None
+
+    # 설명
+    description_tag = soup.find('span', text='설명')
+    if description_tag:
+        description = description_tag.parent.next_sibling.get_text()
+    else:
+        description = None
+
+    driver.quit()
+
+    place_info = {
+        'description': description,
+        'address': address,
+        'operation_time': operation_time,
+        'price': price,
+        'convenience': convenience,
+        'homepage': homepage,
+        'phone': phone,
+        'keyword': keyword,
+    }
+    return place_info
+
+def get_place_reviews(place_id):
+    place_url = f"https://m.place.naver.com/place/{place_id}/review/visitor"
+
+    driver = load_driver()
+    driver.get(place_url)
+    driver.implicitly_wait(3)
+
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+    sections = soup.find_all('div', class_='place_section')
+    review_section = None
+    for section in sections:
+        header = section.find(class_='place_section_header')
+        if header and header.find(string=True, recursive=False) == '리뷰':
+            review_section = section
+            break
+
+    reviews = []
+    if review_section:
+        li_elements = review_section.find('div', {'class': 'place_section_content'}).find('ul').find_all('li')
+        for li in li_elements[:5]:
+            spans = li.find_all('span')
+            review = ' '.join([''.join(span.find_all(string=True, recursive=False)).strip() for span in spans])[:1000]
+            reviews.append(review)
+
+    driver.quit()
+    if len(reviews) > 0:
+        return {
+            'reviews': reviews
+        }
+    else:
+        return {
+            'reviews': None
+        }
+
