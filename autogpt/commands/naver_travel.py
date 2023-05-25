@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import concurrent.futures
 import copy
 import urllib
 import tiktoken
@@ -256,6 +257,7 @@ def kor_tourism_places_nearby_latlng(latitude: float, longitude: float, query: s
     "kor_tourism_places_nearby_latlng",
     "get korea tourism place info nearby latlng. query is used to filter the results",
     '"latitude": "<latitude>", "longitude": "<longitude>", "query": "<query>"',
+    False, # FIXME: disabled due to slow and buggy performance
 )
 def kor_tourism_places_nearby_latlng(latitude: float, longitude: float, query: str = '') -> list:
     driver = load_driver()
@@ -332,7 +334,7 @@ def kor_tourism_places_nearby_latlng(latitude: float, longitude: float, query: s
 
         place_header = get_place_header(place_id)
         place_main_info = get_place_main_info(place_id)
-        place_review = get_place_reviews(place_id)
+        place_review = get_place_reviews(place_id, query)
 
         place_info = {
             'place_id': place['place_id'],
@@ -558,7 +560,7 @@ def get_place_main_info(place_id):
     }
     return place_info
 
-def get_place_reviews(place_id, query):
+def get_place_reviews(place_id, query=None):
     place_url = f"https://m.place.naver.com/place/{place_id}/review/visitor"
 
     driver = load_driver()
@@ -588,7 +590,8 @@ def get_place_reviews(place_id, query):
 
     driver.quit()
     if len(reviews) > 0:
-        reviews = summarize_reviews(reviews, query)
+        if query is not None:
+            reviews = summarize_reviews(reviews, query)
         return {
             'reviews': reviews
         }
@@ -598,8 +601,34 @@ def get_place_reviews(place_id, query):
         }
 
 
-def summarize_reviews(reviews, query):
-    message = create_message("\n".join(reviews), query)
+def summarize_reviews(texts, query):
+    message = create_message_reviews("\n".join(texts), query)
+    response = get_chatgpt_response([message], model='gpt-3.5-turbo', temperature=0)['content']
+    return response
+
+def create_message_place_infos(chunk: str, question: str):
+    if question != '':
+        content = (
+            # "YOU MUST ANSWER WITH info of ['name', 'place_id', 'latitude', 'longitude'] of each place"
+            # " this MUST BE LOCATED IN FRONT OF TEXT!!! and the summarize or query answer should follow."
+            f' """{chunk}""" Using the above text, answer the following'
+            f' question: "{question}" -- if the question cannot be answered using the text,'
+            " summarize the text. Please output in the language used in the above text."
+        )
+    else:
+        content = (
+            # "YOU MUST ANSWER WITH info of ['name', 'place_id', 'latitude', 'longitude'] of each place"
+            # " this MUST BE LOCATED IN FRONT OF TEXT!!! and the summarize or query answer should follow."
+            f' """{chunk}"""'
+            '\nSummarize above place informations.'
+        )
+    
+    return {
+        "role": "user",
+        "content": content
+    }
+def summarize_place_infos(texts, query):
+    message = create_message_place_infos(texts, query)
     response = get_chatgpt_response([message], model='gpt-3.5-turbo', temperature=0)['content']
     return response
 
@@ -649,6 +678,7 @@ def truncate_messages(messages, system_prompt="", model='gpt-3.5-turbo', n_respo
         content_tokens = tokenizer.encode(message['content'])
         n_content_tokens = len(content_tokens)
         n_used_tokens += n_content_tokens
+
         if n_used_tokens >= max_tokens:
             truncated_content_tokens = content_tokens[n_used_tokens-max_tokens:] if keep_last else content_tokens[:max_tokens-n_used_tokens]
             other_messages = messages[i+1:] if keep_last else messages[:i]
@@ -675,7 +705,7 @@ def get_chatgpt_response(messages:list, system_prompt="", model='gpt-3.5-turbo',
 
 
 
-def create_message(chunk: str, question: str):
+def create_message_reviews(chunk: str, question: str):
     if question != '':
         content = f'"""{chunk}""" Using the above text, answer the following'
         f' question: "{question}" -- if the question cannot be answered using the text,'
@@ -690,3 +720,153 @@ def create_message(chunk: str, question: str):
         "role": "user",
         "content": content
     }
+
+
+# getting detailed informations of a place
+# types
+K2E_TYPES = {
+    '음식점': 'DINING',
+    '카페': 'CAFE',
+    '쇼핑': 'SHOPPING',
+    '숙박': 'ACCOMMODATION',
+    '병원의료': 'HOSPITAL',
+    '은행': 'BANK',
+    '주유소': 'OIL',
+    '마트슈퍼': 'MART',
+    '편의점': 'STORE',
+    '생활편의': 'CONVENIENCE',
+    '명소': 'SIGHTS',
+    '체육시설': 'SPORTS',
+    '영화공연': 'CINEMA',
+    '관광서': 'GOVERNMENT',
+}
+E2K_TYPES = {v: k for k, v in K2E_TYPES.items()}
+
+
+DESC_OF_NEARBY = (
+    "find korean place nearby lat and lng, you can speficify place type and query"
+    " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
+    " query: search query which will be used to filter the results"
+    " max_results: choose number reasonable for your query, default is 8"
+)
+@command(
+    "kor_nearby_search",
+    DESC_OF_NEARBY,
+    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "query": "<query>", "max_results": "<max_results>"',
+)
+def kor_nearby_search(latitude, longitude, place_type, query='', max_results=8):
+    driver = load_driver()
+
+    place_type = place_type.upper()
+    lat, lng = round(latitude, 7), round(longitude, 7)
+
+    # 0: 관련도 순, 1: 거리 순
+    sort = 1
+    coord = f'{lng};{lat}'
+
+    naver_nearby_url = f"https://m.map.naver.com/search2/interestSpot.naver?type={place_type}&searchCoord={coord}&siteSort={sort}&sm=clk"
+    driver.get(naver_nearby_url)
+
+    # wait for loading
+    wait = WebDriverWait(driver, 10)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'li._item._lazyImgContainer')))
+    elements = driver.find_elements_by_css_selector('li._item._lazyImgContainer')[:max_results]
+
+    def get_place_infos_nearby_search(element):
+        place_id = element.get_attribute('data-id')
+
+        place_info = {
+            'place_id': place_id,
+            'longitude': element.get_attribute('data-longitude'),
+            'latitude': element.get_attribute('data-latitude'),
+        }
+
+        place_header = get_place_header(place_id)
+        place_main_info = get_place_main_info(place_id)
+        place_review = get_place_reviews(place_id, query)
+
+        place_info.update(place_header)
+        place_info.update(place_main_info)
+        place_info.update(place_review)
+
+        return place_info
+
+    with concurrent.futures.ThreadPoolExecutor(len(elements)) as executor:
+        results = list(executor.map(get_place_infos_nearby_search, elements))
+
+    return results
+
+
+DESC_OF_NEARBY_SUMMARY = (
+    "find korean place nearby lat and lng and return the summary report, you can speficify place type and query"
+    " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
+    " query: search query which will be used to filter the results"
+    " max_results: choose number reasonable for your query, default is 8"
+)
+@command(
+    "kor_nearby_search_summary",
+    DESC_OF_NEARBY_SUMMARY,
+    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "query": "<query>", "max_results": "<max_results>"',
+)
+def kor_nearby_search_summary(latitude, longitude, place_type, query='', max_results=8):
+    driver = load_driver()
+
+    place_type = place_type.upper()
+    lat, lng = round(latitude, 7), round(longitude, 7)
+
+    # 0: 관련도 순, 1: 거리 순
+    sort = 1
+    coord = f'{lng};{lat}'
+
+    naver_nearby_url = f"https://m.map.naver.com/search2/interestSpot.naver?type={place_type}&searchCoord={coord}&siteSort={sort}&sm=clk"
+    driver.get(naver_nearby_url)
+
+    # wait for loading
+    wait = WebDriverWait(driver, 10)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'li._item._lazyImgContainer')))
+    elements = driver.find_elements_by_css_selector('li._item._lazyImgContainer')[:max_results]
+
+    def get_place_infos_nearby_search(element):
+        place_id = element.get_attribute('data-id')
+
+        place_info = {
+            'place_id': place_id,
+            'longitude': element.get_attribute('data-longitude'),
+            'latitude': element.get_attribute('data-latitude'),
+        }
+
+        place_header = get_place_header(place_id)
+        place_main_info = get_place_main_info(place_id)
+        place_review = get_place_reviews(place_id, query)
+
+        place_info.update(place_header)
+        place_info.update(place_main_info)
+        place_info.update(place_review)
+
+        return place_info
+
+    with concurrent.futures.ThreadPoolExecutor(len(elements)) as executor:
+        results = list(executor.map(get_place_infos_nearby_search, elements))
+
+    # final report
+    place_report = json.dumps(results, ensure_ascii=True)
+    if query is not None:
+        summarized_report = summarize_place_infos(place_report, query)
+
+        # get each places ['name', 'place_id', 'latitude', 'longitude']
+        final_report = []
+        for place in results:
+            final_report.append({
+                'name': place['name'],
+                'place_id': place['place_id'],
+                'latitude': place['latitude'],
+                'longitude': place['longitude'],
+            })
+
+        final_report = json.dumps(final_report, ensure_ascii=True)
+        final_report += '\n'
+        final_report += summarized_report
+    else:
+        final_report = place_report
+
+    return final_report
