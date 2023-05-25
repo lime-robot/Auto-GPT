@@ -899,3 +899,99 @@ def distance_matrix(coords: list(list(float, float))):
         'm_distances': m_dist_mat,
         'km_distances': km_dist_mat,
     }
+
+
+@command(
+    "get_optimal_route_5_for_car",
+    (
+        "get optimal route for car, start and goal must be tuple of (lng, lat)"
+        "waypoints must be list of tuple of (lng, lat) and optional and max 5 waypoints are allowed"
+    ),
+    "start: <start>, goal: <goal>, waypoints: <waypoints>, option: <option>"
+)
+def get_optimal_route_5_for_car(start, goal, waypoints=None, option=''):
+    assert start, 'start must be a tuple of (lng, lat)'
+    assert goal, 'goal must be a tuple of (lng, lat)'
+
+    assert len(start) == 2, 'start must be a tuple of (lng, lat)'
+    assert len(goal) == 2, 'goal must be a tuple of (lng, lat)'
+
+    waypoints = '|'.join([f"{point[0]},{point[1]}" for point in waypoints]) if waypoints else ''
+    url = f"https://naveropenapi.apigw.ntruss.com/map-direction/v1/driving?start={start[0]},{start[1]}&goal={goal[0]},{goal[1]}&waypoints={waypoints}&option={option}"
+
+    client_id = CFG.naver_api_id
+    client_secret = CFG.naver_api_client_secret
+    
+    request = urllib.request.Request(url)
+    request.add_header('X-NCP-APIGW-API-KEY-ID', client_id)
+    request.add_header('X-NCP-APIGW-API-KEY', client_secret)
+    
+    response = urllib.request.urlopen(request)
+    rescode = response.getcode()
+    
+    if (rescode == 200):
+        response_body = response.read().decode('utf-8')
+        route = json.loads(response_body)
+
+        paths = route['route']['traoptimal'][0]['path']
+
+        # due to token limit, only left 5 path points including start & end
+        # only left 5 path points including start & end
+        paths = paths[::len(paths)//5] + [paths[-1]]
+        route['route']['traoptimal'][0]['path'] = paths
+
+        del route['route']['traoptimal'][0]['summary']
+        del route['route']['traoptimal'][0]['section']
+        del route['route']['traoptimal'][0]['guide']
+
+        return route
+    else:
+        return f'start: {start} goal: {goal}, waypoints: {waypoints}, Error Code: {rescode}'
+
+
+@command(
+    "get_optimal_route_15_for_car",
+    (
+        "get optimal route for car, start and goal must be tuple of (lng, lat)"
+        "waypoints must be list of tuple of (lng, lat) and optional and max 15 waypoints are allowed"
+    ),
+    "start: <start>, goal: <goal>, waypoints: <waypoints>, option: <option>"
+)
+def get_optimal_route_15_for_car(start, goal, waypoints=None, option=''):
+    assert start, 'start must be a tuple of (lng, lat)'
+    assert goal, 'goal must be a tuple of (lng, lat)'
+
+    assert len(start) == 2, 'start must be a tuple of (lng, lat)'
+    assert len(goal) == 2, 'goal must be a tuple of (lng, lat)'
+
+    waypoints = '|'.join([f"{point[0]},{point[1]}" for point in waypoints]) if waypoints else ''
+    url = f"https://naveropenapi.apigw.ntruss.com/map-direction-15/v1/driving?start={start[0]},{start[1]}&goal={goal[0]},{goal[1]}&waypoints={waypoints}&option={option}"
+
+    client_id = CFG.naver_api_id
+    client_secret = CFG.naver_api_client_secret
+    
+    request = urllib.request.Request(url)
+    request.add_header('X-NCP-APIGW-API-KEY-ID', client_id)
+    request.add_header('X-NCP-APIGW-API-KEY', client_secret)
+    
+    response = urllib.request.urlopen(request)
+    rescode = response.getcode()
+    
+    if (rescode == 200):
+        response_body = response.read().decode('utf-8')
+        route = json.loads(response_body)
+
+        paths = route['route']['traoptimal'][0]['path']
+
+        # due to token limit, only left 5 path points including start & end
+        # only left 5 path points including start & end
+        paths = paths[::len(paths)//5] + [paths[-1]]
+        route['route']['traoptimal'][0]['path'] = paths
+
+        del route['route']['traoptimal'][0]['summary']
+        del route['route']['traoptimal'][0]['section']
+        del route['route']['traoptimal'][0]['guide']
+
+        return route
+    else:
+        return f'start: {start} goal: {goal}, waypoints: {waypoints}, Error Code: {rescode}'
