@@ -746,22 +746,23 @@ E2K_TYPES = {v: k for k, v in K2E_TYPES.items()}
 DESC_OF_NEARBY = (
     "find korean place nearby lat and lng, you can speficify place type and query"
     " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
+    " sort: 0: related sort(maybe recommended(?)), 1: distance sort (close to far)"
     " query: search query which will be used to filter the results"
     " max_results: choose number reasonable for your query, default is 8"
 )
 @command(
     "kor_nearby_search",
     DESC_OF_NEARBY,
-    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "query": "<query>", "max_results": "<max_results>"',
+    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "query": "<query>", "max_results": "<max_results>"',
 )
-def kor_nearby_search(latitude, longitude, place_type, query='', max_results=8):
+def kor_nearby_search(latitude, longitude, place_type, sort, query='', max_results=8):
     driver = load_driver()
 
     place_type = place_type.upper()
     lat, lng = round(latitude, 7), round(longitude, 7)
 
     # 0: 관련도 순, 1: 거리 순
-    sort = 1
+    sort = int(sort)
     coord = f'{lng};{lat}'
 
     naver_nearby_url = f"https://m.map.naver.com/search2/interestSpot.naver?type={place_type}&searchCoord={coord}&siteSort={sort}&sm=clk"
@@ -800,15 +801,16 @@ def kor_nearby_search(latitude, longitude, place_type, query='', max_results=8):
 DESC_OF_NEARBY_SUMMARY = (
     "find korean place nearby lat and lng and return the summary report, you can speficify place type and query"
     " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
+    " sort: 0: related sort(maybe recommended(?)), 1: distance sort (close to far)"
     " query: search query which will be used to filter the results"
     " max_results: choose number reasonable for your query, default is 8"
 )
 @command(
     "kor_nearby_search_summary",
     DESC_OF_NEARBY_SUMMARY,
-    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "query": "<query>", "max_results": "<max_results>"',
+    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "query": "<query>", "max_results": "<max_results>"',
 )
-def kor_nearby_search_summary(latitude, longitude, place_type, query='', max_results=8):
+def kor_nearby_search_summary(latitude, longitude, place_type, sort, query='', max_results=8):
     driver = load_driver()
 
     place_type = place_type.upper()
