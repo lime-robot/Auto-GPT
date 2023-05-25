@@ -870,3 +870,32 @@ def kor_nearby_search_summary(latitude, longitude, place_type, query='', max_res
         final_report = place_report
 
     return final_report
+
+
+
+@command(
+    "distance_matrix",
+    (
+        "caculate distance matrix between places based on latitude and longitude. return matrix in meter and kilometer",
+        "data type should be - list(list(float, float)), ex) [[lat1, lng1], [lat2, lng2], ...]"
+    ),
+    "coords: <coords>"
+)
+def distance_matrix(coords: list(list(float, float))):
+    place_n = len(coords)
+    m_distances = np.zeros((place_n, place_n))
+    km_distances = np.zeros((place_n, place_n))
+    for i in range(place_n):
+        for j in range(place_n):
+            loc_i = (float(coords[i][0]), float(coords[i][1]))
+            loc_j = (float(coords[j][0]), float(coords[j][1]))
+            m_distances[i, j] = haversine(loc_i, loc_j, unit='m')
+            km_distances[i, j] = haversine(loc_i, loc_j, unit='km')
+
+    m_dist_mat = np.array2string(m_distances, precision=1, floatmode='fixed')
+    km_dist_mat = np.array2string(km_distances, precision=1, floatmode='fixed')
+
+    return {
+        'm_distances': m_dist_mat,
+        'km_distances': km_dist_mat,
+    }
