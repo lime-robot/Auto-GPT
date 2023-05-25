@@ -122,6 +122,7 @@ def latlng2kor_address(latitude: float, longitude: float) -> str:
     "kor_address2latlng",
     "convert korean address(ex: jibun(지번), road(도로명) etc) to latitude and longitude",
     '"address": "<address>"',
+    False # FIXME: disabled because google search is better
 )
 def kor_address2latlng(address):
     client_id = CFG.naver_api_id
@@ -152,105 +153,6 @@ def kor_address2latlng(address):
         
     else:
         print(f'address: {address} Error Code: {res}')
-
-
-@command(
-    "kor_tourism_places_nearby_latlng",
-    "get korea tourism place info nearby latlng. query is used to filter the results",
-    '"latitude": "<latitude>", "longitude": "<longitude>", "query": "<query>"',
-)
-def kor_tourism_places_nearby_latlng(latitude: float, longitude: float, query: str = '') -> list:
-    driver = load_driver()
-    driver.get("https://map.naver.com/v5/search")
-
-    # wait until the page is loaded
-    wait = WebDriverWait(driver, 10)
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.input_box>input.input_search")))
-
-    if isinstance(latitude, str):
-        latitude = float(latitude)
-    if isinstance(longitude, str):
-        longitude = float(longitude)
-
-    lat, lng = round(latitude, 7), round(longitude, 7)
-    coord = f'{lat},{lng}'
-
-    # search for the query and click enter
-    search_box = driver.find_element_by_css_selector("div.input_box>input.input_search")
-    search_box.send_keys(coord)
-    search_box.send_keys(Keys.ENTER)
-
-    # wait until the page is loaded
-    wait = WebDriverWait(driver, 10)
-    wait.until(EC.presence_of_element_located((By.XPATH, '//div[@class="end_inner place ng-star-inserted"]')))
-
-    # 네이버 지도 기능!! -> 가볼만한 곳
-    place_infos = driver.find_elements(By.XPATH, '//div[@class="end_inner place ng-star-inserted"]')
-    recommended_places = place_infos[1]
-
-    # save current url to reload
-    current_url = driver.current_url
-
-    places = recommended_places.find_elements_by_xpath('ul[@class="list_space"]/li')
-    place_n = len(places)
-
-    tourism_places = []
-    for place_i in range(place_n):
-
-        place = places[place_i]
-
-        html_doc = place.get_attribute('outerHTML')
-        soup = BeautifulSoup(html_doc, 'html.parser')
-
-        place_name = soup.find('strong', {'class': 'space_title'}).get_text()
-        place_type = soup.find('p', {'class': 'space_text'}).get_text()
-
-        link = place.find_element_by_xpath('.//div[@class="space_thumb_box"]')
-        driver.execute_script("arguments[0].click();", link)
-
-        place_url = driver.current_url
-        place_id = place_url.split('place')[-1].split('?')[0][1:]
-
-        # wait until the page is loaded
-        driver.get(current_url)
-
-        # wait until the page is loaded
-        wait = WebDriverWait(driver, 10)
-        wait.until(EC.presence_of_element_located((By.XPATH, '//div[@class="end_inner place ng-star-inserted"]')))
-
-        # reload the page every time to prevent stale element reference error
-        place_infos = driver.find_elements(By.XPATH, '//div[@class="end_inner place ng-star-inserted"]')
-        recommended_places = place_infos[1]
-        places = recommended_places.find_elements_by_xpath('ul[@class="list_space"]/li')
-
-        tourism_places.append({
-            'place_id': place_id,
-            'place_name': place_name,
-            'place_type': place_type,
-        })
-
-    driver.quit()
-
-    # get place meta information
-    place_infos = []
-    for place in tourism_places:
-        place_id = place['place_id']
-
-        place_header = get_place_header(place_id)
-        place_main_info = get_place_main_info(place_id)
-        place_review = get_place_reviews(place_id, query)
-
-        place_info = {
-            'place_id': place['place_id'],
-        }
-
-        place_info.update(place_header)
-        place_info.update(place_main_info)
-        place_info.update(place_review)
-
-        place_infos.append(place_info)
-
-    return place_infos 
 
 
 @command(
