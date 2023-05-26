@@ -127,6 +127,7 @@ def run_auto_gpt(
     command_registry = CommandRegistry()
 
     command_categories = [
+        "autogpt.commands.map",
         #"autogpt.commands.analyze_code",
         #"autogpt.commands.audio_text",
         #"autogpt.commands.execute_code",
