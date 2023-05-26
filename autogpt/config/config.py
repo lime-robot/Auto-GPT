@@ -159,6 +159,8 @@ class Config(metaclass=Singleton):
         else:
             self.plugins_denylist = []
 
+        self.kakao_api_key = os.getenv("KAKAO_API_KEY")
+
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
         Returns the relevant deployment id for the model specified.
