@@ -321,11 +321,18 @@ class Agent:
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
             command_args["directory"] = str(self.workspace.root)
         else:
-            for pathlike in ["filename", "directory", "clone_path"]:
+            for pathlike in ["filename", "directory", "clone_path", "save_filename"]:
                 if pathlike in command_args:
                     command_args[pathlike] = str(
                         self.workspace.get_path(command_args[pathlike])
                     )
+            
+            if "read_filenames" in command_args:
+                command_args["read_filenames"] = [
+                    str(self.workspace.get_path(filename))
+                    for filename in command_args["read_filenames"]
+                ]
+
         return command_args
 
     def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
