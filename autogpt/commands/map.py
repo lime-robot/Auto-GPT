@@ -61,3 +61,52 @@ def get_kakao_review(place_url):
 
     driver.quit()
     return reviews
+
+def get_place_info(place_url):
+    options = webdriver.ChromeOptions()
+    options.add_argument('headless')
+
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()), 
+        options=options
+    )
+
+    driver.get(place_url)
+
+    try:
+        rating = WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((
+                By.CSS_SELECTOR, 
+                '#mArticle > div.cont_essential > div:nth-child(1) > div.place_details > div > div > a:nth-child(3) > span.color_b'
+            ))
+        ).text
+    except:
+        rating = "-1"
+
+    try:
+        num_review = WebDriverWait(driver, 3).until(
+                EC.presence_of_element_located((
+                    By.CSS_SELECTOR, 
+                    '#mArticle > div.cont_essential > div:nth-child(1) > div.place_details > div > div > a:nth-child(3) > span.color_g'
+                ))
+            ).text
+        num_review = re.findall(r'\d+', num_review)[0]
+    except:
+        num_review = "-1"
+
+    try:
+        num_blog_review = WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((
+                    By.CSS_SELECTOR, 
+                    '#mArticle > div.cont_essential > div > div.place_details > div > div > a > span'
+                ))
+            ).text
+    except:
+        num_blog_review = "-1"
+
+    driver.quit()
+
+    review = get_kakao_review(place_url)
+
+    return rating, num_review, num_blog_review, review
+
