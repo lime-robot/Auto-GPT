@@ -174,3 +174,36 @@ def search_place_from_keyword_using_kakaoAPI(keyword, category_group_code=None, 
         f.write(str(results))
     return f"Written to {filename}"
 
+@command(
+    "write_markdown_report_from_files",
+    "Read files and write a high quality report in markdown format",
+    '"read_filenames": "<list_of_filename_to_read_and_refer_to>", "topic": "<topic_of_the_report>", "requirements": "<requirements>", "save_filename": "<filename_to_save_the_report_to>"'
+)
+def write_markdown_report_from_files(read_filenames, topic, requirements, save_filename):
+    print(read_filenames, save_filename)
+    texts = []
+    for filename in read_filenames:
+        with open(filename) as f:
+            texts.append(f"{Path(filename).stem}\n```\n{f.read()}\n```")
+    context = "\n\n".join(texts)
+
+    prompt = f"""
+Here are references:
+{context}
+
+Here are requirements:
+1. 위 정보를 고려해서 report를 작성하세요.
+2. rating, num_review, num_blog_reviews, review 정보를 이용해서 적절한 장소를 3개씩 추천해주세요.
+3. 장소에 대한 링크와 이미지를 포함하세요.
+4. review 정보를 이용해서 추천된 장소의 장점, 단점을 item bullet 포맷으로 작성하세요.
+5. 마지막으로 추천된 장소를 어떤 순서로 방문하면 좋을지 시간의 흐름에 따라 작성하세요. 한국의 아침 시간은 07시~09시, 점심시간은 11시~13시, 저녁시간은 17시~19시입니다.
+
+Write a professional markdown report of topic "Sokcho One-Day Trip Itinerary" considering "gangneung_attractions", "gangneung_restaurants". Write down in korean.
+""".strip()
+
+    print(prompt)
+    model = "gpt-4" # gpt-3.5-turbo
+    response = create_chat_completion([{"role": "user", "content": prompt}], model=model, temperature=0)
+    with open(save_filename, "w") as f:
+        f.write(response)
+    return f"Written to {Path(save_filename).stem}"
