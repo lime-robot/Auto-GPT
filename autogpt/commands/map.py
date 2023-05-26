@@ -118,7 +118,7 @@ def get_place_info(place_url):
 def search_place_from_keyword_using_kakaoAPI(keyword, category_group_code=None, filename="sample.txt"):
     api_key = CFG.kakao_api_key
     url = "https://dapi.kakao.com/v2/local/search/keyword.json"
-    size = 5
+    size = 2
     num_page = 1
 
     headers = {
@@ -202,8 +202,8 @@ Write a professional markdown report of topic "Sokcho One-Day Trip Itinerary" co
 """.strip()
 
     print(prompt)
-    model = "gpt-4" # gpt-3.5-turbo
-    response = create_chat_completion([{"role": "user", "content": prompt}], model=model, temperature=0)
+    model = "gpt-3.5-turbo" # "gpt-4" # gpt-3.5-turbo
+    response = create_chat_completion([{"role": "user", "content": prompt}], model=model, temperature=0.5)
     with open(save_filename, "w") as f:
         f.write(response)
     return f"Written to {Path(save_filename).stem}"
