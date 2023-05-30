@@ -1165,3 +1165,90 @@ def get_optimal_route_15_for_car(start, goal, waypoints=None, option=''):
         return route
     else:
         return f'start: {start} goal: {goal}, waypoints: {waypoints}, Error Code: {rescode}'
+
+
+def create_message_for_travel_plan(place_infos: str, goal: str, days_of_travel: int):
+    content = (
+        f"you will have to return the {days_of_travel} plan for each day to meet user's goal {goal}\n"
+        f"Here is the places to consider for visiting. [ {place_infos} ]\n"
+        " If something is unamiguous, like user preference, DON'T ASK and choose the best one on your choice\n"
+        ""
+        " return plan format: {'1': [{<place_id>: <place_type>}, ...], '2': [{<place_id>: <place_type>}, ...], ...}\n"
+        " <place_id>: place_id is given in given ref dict. {'place_id': (->THIS!<-), 'latitude': ...}\n"
+        " <place_type>: one of [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
+        " Choose at least 2 places to eat and 1 place to stay for each day.\n"
+        " How many tour sights to visit for each day will be chosen by you.\n"
+        " the order in each day represents the order of visit."
+        " also consider the distance between places and time to travel between places\n"
+        ""
+        " you can request more informations if is not enough to complete the plan."
+        " Simply return the following string format to request more information\n"
+        " more info required! {<required_place_type>: <minimum number required>, ...} \n"
+        ""
+        "Only return the given format. don't input any of comment on your side\n"
+    )
+    return {
+        "role": "user",
+        "content": content
+    }
+
+def travel_plan_gpt3(place_infos, goal, days_of_travel):
+    message = create_message_for_travel_plan(place_infos, goal, days_of_travel)
+    response = get_chatgpt_response([message], model='gpt-3.5-turbo', temperature=0)['content']
+    return response
+
+def travel_plan_gpt4(place_infos, goal, days_of_travel):
+    message = create_message_for_travel_plan(place_infos, goal, days_of_travel)
+    response = get_chatgpt_response([message], model='gpt-4', temperature=0)['content']
+    return response
+
+
+
+TRAVEL_PLAN_DESC = (
+    "make a travel plan for each day to meet user's goal"
+    " filenames: [filename1, filename2, ...] file for each place detailed json informations"
+    " goal: is a <GOAL> chosen by user what user want to achieve"
+    " days_of_travel: how many days user will travel, choose reasonable number if user don't specify"
+)
+@command(
+    "make_travel_plan_each_day",
+    TRAVEL_PLAN_DESC,
+    "filenames: <filenames>, goal: <goal>, days_of_travel: <days_of_travel>"
+)
+def make_travel_plan_each_day(filenames, goal, days_of_travel):
+    repo_work_dir = os.path.join(Path.cwd(), 'autogpt/auto_gpt_workspace')
+
+    # using place ids load each place detailed information
+    # place name, type, id, lat, lng, rate, rank, rate_reason
+    filter_keys = ['name', 'type', 'place_id', 'latitude', 'longitude', 'rating', 'rank', 'rate_reason']
+
+    place_details = []
+    for filename in filenames:
+        filename = os.path.join(repo_work_dir, filename)
+        with open(filename, 'r') as f:
+            place_info = json.load(f)
+            filtered_place_info = {k: v for k, v in place_info.items() if k in filter_keys}
+            place_details.append(filtered_place_info)
+
+    # calculate distance matrix
+    # gather [(lat, lng), (..), ...] from place details
+    coords = [(place_info['latitude'], place_info['longitude']) for place_info in place_details]
+    dist_mat = distance_matrix(coords)
+
+    # add distance matrix to place details
+    place_infos = json.dumps(place_details) + json.dumps(dist_mat)
+
+    try:
+        travel_plan = travel_plan_gpt3(place_infos, goal, days_of_travel)
+        if 'required' in travel_plan:
+            return travel_plan
+    except:
+        travel_plan = travel_plan_gpt4(place_infos, goal, days_of_travel)
+        if 'required' in travel_plan:
+            return travel_plan
+
+    return travel_plan
+
+
+
+    
