@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import random
 import json
 import concurrent.futures
 import copy
@@ -649,16 +650,19 @@ E2K_TYPES = {v: k for k, v in K2E_TYPES.items()}
 DESC_OF_NEARBY = (
     "find korean place nearby lat and lng, you can speficify place type and query"
     " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
+    " goal: is a <GOAL> chosen by user"
     " sort: 0: related sort(maybe recommended(?)), 1: distance sort (close to far)"
-    " query: is a <GOAL> chosen by user, if you don't have any idea better than <GOAL> itself, just copy <GOAL> to query"
     " max_results: choose number reasonable for your query, default is 8"
 )
 @command(
     "kor_nearby_search_details",
     DESC_OF_NEARBY,
-    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "query": "<query>", "max_results": "<max_results>"',
+    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "goal": "<goal>", "max_results": "<max_results>"',
+    False, # FIXME: disabled because it's supports too huge information
 )
-def kor_nearby_search_details(latitude, longitude, place_type, sort, query='', max_results=8):
+def kor_nearby_search_details(latitude, longitude, place_type, sort, goal, max_results=8):
+    query = goal
+
     driver = load_driver()
 
     place_type = place_type.upper()
@@ -704,17 +708,19 @@ def kor_nearby_search_details(latitude, longitude, place_type, sort, query='', m
 DESC_OF_NEARBY_SUMMARY = (
     "find korean place nearby lat and lng and return the summary report, you can speficify place type and query"
     " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
+    " goal: is a <GOAL> chosen by user"
     " sort: 0: related sort(maybe recommended(?)), 1: distance sort (close to far)"
-    " query: is a <GOAL> chosen by user, if you don't have any idea better than <GOAL> itself, just copy <GOAL> to query"
     " max_results: choose number reasonable for your query, default is 8"
 )
 @command(
     "kor_nearby_search_summary",
     DESC_OF_NEARBY_SUMMARY,
-    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "query": "<query>", "max_results": "<max_results>"',
+    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "goal": "<goal>", "max_results": "<max_results>"',
     False, # FIXME: this command doens't return proper summary information so it's disabled
 )
-def kor_nearby_search_summary(latitude, longitude, place_type, sort, query='', max_results=8):
+def kor_nearby_search_summary(latitude, longitude, place_type, sort, goal, max_results=8):
+    query = goal
+
     driver = load_driver()
 
     place_type = place_type.upper()
@@ -778,12 +784,12 @@ def kor_nearby_search_summary(latitude, longitude, place_type, sort, query='', m
     return final_report
 
 
-def create_message_for_rating_place(place_info: str, query: str):
+def create_message_for_rating_place(place_info: str, goal: str):
     content = (
-        f' you will have to rate how good is this place from 1.0 to 10.0 related to the query: [ "{query}" ]'
+        f'you will have to rate how good is this place from 1.0 to 10.0 related to the goal: [ "{goal}" ]'
         f' the detailed info of place is following [ {place_info} ]'
-        'after rating the place please explain why you rated the place like that.'
-        'the output format should be like this: [ "{your rate}|{the reason why you rate to that score}" ]'
+        ' after rating the place please explain why you rated the place like that.'
+        ' the output format should be like this: [ "{your rate}|{the reason why you rate to that score}" ]'
         " please output in the language used in given text."
         " make the output is short as possible. give the point with short and precise reason"
     )
@@ -793,26 +799,27 @@ def create_message_for_rating_place(place_info: str, query: str):
         "content": content
     }
 
-def rate_place_infos_gpt3(place_info, query):
-    message = create_message_for_rating_place(place_info, query)
+def rate_place_infos_gpt3(place_info, goal):
+    message = create_message_for_rating_place(place_info, goal)
     response = get_chatgpt_response([message], model='gpt-3.5-turbo', temperature=0)['content']
     return response
 
-def rate_place_infos_gpt4(place_info, query):
-    message = create_message_for_rating_place(place_info, query)
+def rate_place_infos_gpt4(place_info, goal):
+    message = create_message_for_rating_place(place_info, goal)
     response = get_chatgpt_response([message], model='gpt-4', temperature=0)['content']
     return response
 
 
-def create_message_for_ranking_places(place_infos: str, query: str):
+def create_message_for_ranking_places(place_infos: str, goal: str):
     content = (
         ' you already gave impression of each place when you look at it'
         f' the detailed review of places by you is following [ {place_infos} ]'
         ' now you have to make ranking of among this places from 1 to the last which seems'
-        f' most related to the query: [ "{query}" ]'
+        ' highest related place to the goal should be 1st and lowest related place should be last'
+        f' most related to the goal: [ "{goal}" ]'
         ' the output format should be like this in dict format: [ {place_id}: {rank}, {place_id}: {rank}, ..." ]'
         " please output in the language used in given text."
-        'do not print out anything else except the output format.'
+        ' strictly follow the output format and do not print out anything else.'
     )
     
     return {
@@ -820,13 +827,13 @@ def create_message_for_ranking_places(place_infos: str, query: str):
         "content": content
     }
 
-def rank_place_infos_gpt3(place_infos, query):
-    message = create_message_for_ranking_places(place_infos, query)
+def rank_place_infos_gpt3(place_infos, goal):
+    message = create_message_for_ranking_places(place_infos, goal)
     response = get_chatgpt_response([message], model='gpt-3.5-turbo', temperature=0)['content']
     return response
 
-def rank_place_infos_gpt4(place_infos, query):
-    message = create_message_for_ranking_places(place_infos, query)
+def rank_place_infos_gpt4(place_infos, goal):
+    message = create_message_for_ranking_places(place_infos, goal)
     response = get_chatgpt_response([message], model='gpt-4', temperature=0)['content']
     return response
 
@@ -839,18 +846,18 @@ DESC_OF_NEARBY_SUMMARY_RANK = (
     " don't choose work_dir and project name randomly. this names should be unique for each project and related to the data your are collecting"
     " this detailed report will include also the ranking of each places"
     " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
+    " goal: is a <GOAL> chosen by user"
     " sort: 0: related sort(maybe recommended(?)), 1: distance sort (close to far)"
-    # " query: choose query carefully which MUST be very helpful sort out related places to achieve the GOAL"
-    # " be specific as possible and avoid just single word which is ambiguous."
-    " query: is a <GOAL> chosen by user, if you don't have any idea better than <GOAL> itself, just copy <GOAL> to query"
     " max_results: choose number reasonable for the goal"
 )
 @command(
     "kor_nearby_search_summary_and_save_details_to_file",
     DESC_OF_NEARBY_SUMMARY_RANK,
-    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "query": "<query>", "work_dir": <work_dir>, "project_name": <project_name>, "max_results": "<max_results>"',
+    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "goal": "<goal>", "work_dir": <work_dir>, "project_name": <project_name>, "max_results": "<max_results>"',
 )
-def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, place_type, sort, query, work_dir, project_name, max_results):
+def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, place_type, sort, goal, work_dir, project_name, max_results):
+    query = goal
+
     repo_work_dir = os.path.join(Path.cwd(), 'autogpt/auto_gpt_workspace')
     save_dir = os.path.join(repo_work_dir, work_dir, project_name)
 
@@ -893,19 +900,33 @@ def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, plac
 
         return place_info
 
-    with concurrent.futures.ThreadPoolExecutor(len(elements)) as executor:
-        results = list(executor.map(get_place_infos_nearby_search, elements))
+    # with concurrent.futures.ThreadPoolExecutor(len(elements)) as executor:
+        # results = list(executor.map(get_place_infos_nearby_search, elements))
 
+    # search by order
+    results = []
+    for element in elements:
+        # random waiting time to avoid blocking
+        time.sleep(random.uniform(0.5, 1.5))
+
+        results.append(get_place_infos_nearby_search(element))
+
+
+    place_detail_infos = []
     place_summary_infos = []
     for place in results:
-        filename = f"place_info_{place['place_id']}.json"
+        # filename = f"place_info_{place['place_id']}.json"
+
+        # type ex ) DINING, 중식당
+        save_type = f"{place_type}, {place['type']}"
 
         place_summary_info = {
-            'name': place['name'],
+            # 'name': place['name'],
             'place_id': place['place_id'],
+            'type': save_type,
             'latitude': place['latitude'],
             'longitude': place['longitude'],
-            'filename': f"place_info_{place['place_id']}.json",
+            # 'filename': f"place_info_{place['place_id']}.json",
             'rating': None,
             'rank': None,
         }
@@ -925,16 +946,15 @@ def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, plac
             assert 0 <= float(rating) <= 10
 
         # save whole detail data
-        place_detail_infos = copy.deepcopy(place)
-        place_detail_infos['rating'] = rating
-        place_detail_infos['rate_reason'] = rate_result
-        place_detail_infos = json.dumps(place_detail_infos, ensure_ascii=False)
-        with open(f"{save_dir}/{filename}", 'w') as f:
-            f.write(place_detail_infos)
+        place_detail_info = copy.deepcopy(place)
+        place_detail_info['type'] = save_type
+        place_detail_info['rating'] = rating
+        place_detail_info['rate_reason'] = rate_result
+        place_detail_infos.append(place_detail_info)
 
         # each place info 
         place_summary_info['rating'] = rating
-        place_summary_info['rate_reason'] = rate_result
+        place_summary_info['rate_reason'] = rating
         place_summary_infos.append(place_summary_info)
 
     # rank the places
@@ -947,8 +967,22 @@ def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, plac
         rank_results = json.loads(rank_results)
 
     # update the rank
+    # each place
+    place_n = len(place_summary_infos)
     for summary in place_summary_infos:
-        summary['rank'] = rank_results.get(summary['place_id'], -1)
+        summary['rank'] = f"{rank_results.get(summary['place_id'], -1)}/{place_n}"
+
+        # to save memory
+        del summary['rate_reason']
+
+    # save detail data
+    for detail in place_detail_infos:
+        filename = f"place_info_{detail['place_id']}.json"
+        detail = json.dumps(detail, ensure_ascii=False)
+        detail['rank'] = f"{rank_results.get(detail['place_id'], -1)}/{place_n}"
+
+        with open(f"{save_dir}/{filename}", 'w') as f:
+            f.write(place_detail_info)
 
     place_summary_infos = json.dumps(place_summary_infos, ensure_ascii=True)
     return place_summary_infos
