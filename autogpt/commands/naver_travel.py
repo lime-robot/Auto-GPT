@@ -333,11 +333,11 @@ def get_place_info(place_id, query=None):
 
     wait = WebDriverWait(driver, 10)
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.place_section")))
-    html = BeautifulSoup(driver.page_source, 'html.parser')
+    html = driver.page_source
 
     place_info.update(get_place_header(html))
     place_info.update(get_place_main_info(html))
-    place_info.update(get_place_reviews(html, query))
+    place_info.update(get_place_reviews(place_id, query))
 
     driver.quit()
 
@@ -456,8 +456,47 @@ def get_place_main_info(html):
     }
     return place_info
 
-def get_place_reviews(html, query=None):
-    soup = BeautifulSoup(html, 'html.parser')
+# def get_place_reviews(html, query=None):
+#     soup = BeautifulSoup(html, 'html.parser')
+
+#     sections = soup.find_all('div', class_='place_section')
+#     review_section = None
+#     for section in sections:
+#         header = section.find(class_='place_section_header')
+#         if header and header.find(string=True, recursive=False) == '리뷰':
+#             review_section = section
+#             break
+
+#     reviews = []
+#     if review_section:
+#         li_elements = review_section.find('div', {'class': 'place_section_content'}).find('ul').find_all('li')
+#         for li in li_elements[:5]:
+#             spans = li.find_all('span')
+#             review = ' '.join([''.join(span.find_all(string=True, recursive=False)).strip() for span in spans])[:1000]
+#             reviews.append(review)
+
+#     if len(reviews) > 0:
+#         if query is not None:
+#             reviews = summarize_reviews(reviews, query)
+#         return {
+#             'reviews': reviews
+#         }
+#     else:
+#         return {
+#             'reviews': None
+#         }
+
+def get_place_reviews(place_id, query=None):
+    place_url = f"https://m.place.naver.com/place/{place_id}/review/visitor"
+
+    driver = load_driver()
+    driver.get(place_url)
+
+    # explicitly wait until the page is loaded
+    wait = WebDriverWait(driver, 10)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.place_section")))
+
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
 
     sections = soup.find_all('div', class_='place_section')
     review_section = None
@@ -475,6 +514,7 @@ def get_place_reviews(html, query=None):
             review = ' '.join([''.join(span.find_all(string=True, recursive=False)).strip() for span in spans])[:1000]
             reviews.append(review)
 
+    driver.quit()
     if len(reviews) > 0:
         if query is not None:
             reviews = summarize_reviews(reviews, query)
@@ -634,7 +674,7 @@ DESC_OF_NEARBY = (
     "find korean place nearby lat and lng, you can speficify place type and query"
     " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
     " goal: is a <GOAL> chosen by user"
-    " sort: 0: related sort(maybe recommended(?)), 1: distance sort (close to far)"
+    " sort: 0: related sort(recommended), 1: distance sort (close to far)"
     " max_results: choose number reasonable for your query, default is 8"
 )
 @command(
@@ -685,7 +725,7 @@ DESC_OF_NEARBY_SUMMARY = (
     "find korean place nearby lat and lng and return the summary report, you can speficify place type and query"
     " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
     " goal: is a <GOAL> chosen by user"
-    " sort: 0: related sort(maybe recommended(?)), 1: distance sort (close to far)"
+    " sort: 0: related sort(recommended), 1: distance sort (close to far)"
     " max_results: choose number reasonable for your query, default is 8"
 )
 @command(
@@ -758,9 +798,10 @@ def create_message_for_rating_place(place_info: str, goal: str):
         f'you will have to rate how good is this place from 1.0 to 10.0 related to the goal: [ "{goal}" ]'
         f' the detailed info of place is following [ {place_info} ]'
         ' after rating the place please explain why you rated the place like that.'
-        ' the output format should be like this: [ "{your rate}|{the reason why you rate to that score}" ]'
+        ' the output format should be like this: [ "<your rate>|<the reason why you rate to that score>" ]'
         " please output in the language used in given text."
-        " make the output is short as possible. give the point with short and precise reason"
+        " write the reason with clear and prominent evidence"
+        " Use enough text you want but there MUST not be unnecessary text."
     )
     
     return {
@@ -778,6 +819,26 @@ def rate_place_infos_gpt4(place_info, goal):
     response = get_chatgpt_response([message], model='gpt-4', temperature=0)['content']
     return response
 
+
+def create_message_for_ranking_places_v2(place_infos: str, goal: str):
+    """adding relative rating & ranking opinion"""
+    content = (
+        ' you already gave impression of each place when you look at it'
+        f' the detailed review of places by you is following [ {place_infos} ]'
+        ' now you have to make ranking of among this places from 1 to the last which seems'
+        f' most related to the goal: [ "{goal}" ]'
+        ' Also rerate the places for relative score, the highest is 10.0 and lowest should be 0.0'
+        ' support reason in short for each place why you ranked and rerate like that considering goal'
+        ' the output format should be like is in dict format: [ {<place_id>: <relative rate>|<rank>|<the reason why you rate and rank like that>, ...: ... } ]'
+        ' Remember. This is a relative opinion of you so MUST be made by considering all the place information given'
+        " please output in the language used in given text."
+        ' strictly follow the output format and do not print out anything else.'
+    )
+    
+    return {
+        "role": "user",
+        "content": content
+    }
 
 def create_message_for_ranking_places(place_infos: str, goal: str):
     content = (
@@ -809,26 +870,26 @@ def rank_place_infos_gpt4(place_infos, goal):
 
 DESC_OF_NEARBY_SUMMARY_RANK = (
     "find korean place nearby lat and lng and return the summary report and save detail info to file"
-    " you MUST input proper work_dir and project_name to save the detail info to file"
-    " the filename will be chosen automatically with format f'place_info_<place_id>.json' and saved to <work_dir>/<project_name>/place_info_<place_id>.json"
+    " you MUST input proper <project_name> in english to save the detail info to file"
+    " the filename will be chosen automatically with format f'place_info_<place_id>.json' and saved to <project_name>/place_info_<place_id>.json"
     " you will get returned <place_id> so you can further use it to get detail info"
-    " don't choose work_dir and project name randomly. this names should be unique for each project and related to the data your are collecting"
+    " don't choose work_dir and project name randomly. this names should be unique and related to the data your are collecting"
     " this detailed report will include also the ranking of each places"
     " place_type: [DINING, CAFE, SHOPPING, ACCOMMODATION, HOSPITAL, BANK, OIL, MART, STORE, CONVENIENCE, SIGHTS, SPORTS, CINEMA, GOVERNMENT]"
-    " goal: is a <GOAL> chosen by user"
-    " sort: 0: related sort(maybe recommended(?)), 1: distance sort (close to far)"
+    " goal: is a <GOAL> chosen by user what user want to achieve"
+    " sort: 0: related sort(recommended), 1: distance sort (close to far)"
     " max_results: choose number reasonable for the goal"
 )
 @command(
     "kor_nearby_search_summary_and_save_details_to_file",
     DESC_OF_NEARBY_SUMMARY_RANK,
-    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "goal": "<goal>", "work_dir": <work_dir>, "project_name": <project_name>, "max_results": "<max_results>"',
+    '"latitude": "<latitude>", "longitude": "<longitude>", "place_type": "<place_type>", "sort": "<sort>", "goal": "<goal>", "project_name": <project_name>, "max_results": "<max_results>"',
 )
-def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, place_type, sort, goal, work_dir, project_name, max_results):
+def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, place_type, sort, goal, project_name, max_results):
     query = goal
 
     repo_work_dir = os.path.join(Path.cwd(), 'autogpt/auto_gpt_workspace')
-    save_dir = os.path.join(repo_work_dir, work_dir, project_name)
+    save_dir = os.path.join(repo_work_dir, project_name)
 
     if not Path(save_dir).exists():
         os.makedirs(save_dir, exist_ok=True)
@@ -862,33 +923,28 @@ def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, plac
 
         return place_info
 
-    # with concurrent.futures.ThreadPoolExecutor(len(elements)) as executor:
-        # results = list(executor.map(get_place_infos_nearby_search, elements))
+    with concurrent.futures.ThreadPoolExecutor(len(elements)) as executor:
+        results = list(executor.map(get_place_infos_nearby_search, elements))
 
     # search by order
-    results = []
-    for element in elements:
-        # random waiting time to avoid blocking
-        time.sleep(random.uniform(0.5, 1.5))
+    # results = []
+    # for element in elements:
+    #     # random waiting time to avoid blocking
+    #     time.sleep(random.uniform(0.5, 1.5))
 
-        results.append(get_place_infos_nearby_search(element))
-
+    #     results.append(get_place_infos_nearby_search(element))
 
     place_detail_infos = []
     place_summary_infos = []
     for place in results:
-        # filename = f"place_info_{place['place_id']}.json"
-
         # type ex ) DINING, 중식당
         save_type = f"{place_type}, {place['type']}"
 
         place_summary_info = {
-            # 'name': place['name'],
             'place_id': place['place_id'],
             'type': save_type,
             'latitude': place['latitude'],
             'longitude': place['longitude'],
-            # 'filename': f"place_info_{place['place_id']}.json",
             'rating': None,
             'rank': None,
         }
@@ -924,15 +980,40 @@ def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, plac
     try:
         rank_results = rank_place_infos_gpt3(place_infos, query)
         rank_results = json.loads(rank_results)
+
+        # for v2
+        # the output format should be in dict format: [ {place_id}: "{rate}|{rank}", ... ]
+        # check the format rate which MUST be between 0. and 10.
+        # for rate_rank in rank_results.values():
+        #     rate, rank, reason = rate_rank.split('|')
+        #     assert 0 <= float(rate) <= 10
     except:
         rank_results = rank_place_infos_gpt4(place_infos, query)
         rank_results = json.loads(rank_results)
+
+        # for v2
+        # the output format should be in dict format: [ {place_id}: "{rate}|{rank}", ... ]
+        # check the format rate which MUST be between 0. and 10.
+        # for rate_rank in rank_results.values():
+        #     rate, rank, reason = rate_rank.split('|')
+        #     assert 0 <= float(rate) <= 10
 
     # update the rank
     # each place
     place_n = len(place_summary_infos)
     for summary in place_summary_infos:
-        summary['rank'] = f"{rank_results.get(summary['place_id'], -1)}/{place_n}"
+        if summary['place_id'] in rank_results:
+            # rate, rank, reason = rank_results[summary['place_id']].split('|')
+            # rate, rank = float(rate), int(rank)
+            rank = rank_results[summary['place_id']]
+        else:
+            # rate, rank, reason = -1, -1, ''
+            rank = -1
+        
+        summary['rank'] = f"{rank}/{place_n}"
+
+        # rating by comparing with other places
+        # summary['relative_rating'] = rate
 
         # to save memory
         del summary['rate_reason']
@@ -940,11 +1021,22 @@ def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, plac
     # save detail data
     for detail in place_detail_infos:
         filename = f"place_info_{detail['place_id']}.json"
+        if detail['place_id'] in rank_results:
+            # rate, rank, reason = rank_results[detail['place_id']].split('|')
+            # rate, rank = float(rate), int(rank)
+            rank = rank_results[detail['place_id']]
+        else:
+            # rate, rank, reason = -1, -1, ''
+            rank = -1
+
+        detail['rank'] = f"{rank}/{place_n}"
+        # detail['relative_rating'] = rate
+        # detail['rank_reason'] = reason
+
         detail = json.dumps(detail, ensure_ascii=False)
-        detail['rank'] = f"{rank_results.get(detail['place_id'], -1)}/{place_n}"
 
         with open(f"{save_dir}/{filename}", 'w') as f:
-            f.write(place_detail_info)
+            f.write(detail)
 
     place_summary_infos = json.dumps(place_summary_infos, ensure_ascii=True)
     return place_summary_infos
