@@ -234,17 +234,10 @@ def kor_tourism_places_nearby_latlng(latitude: float, longitude: float, query: s
     place_infos = []
     for place in tourism_places:
         place_id = place['place_id']
-
-        place_header = get_place_header(place_id)
-        place_main_info = get_place_main_info(place_id)
-        place_review = get_place_reviews(place_id, query)
-
         place_info = {
             'place_id': place['place_id'],
         }
-        place_info.update(place_header)
-        place_info.update(place_main_info)
-        place_info.update(place_review)
+        place_info.get_place_info(place_id, query)
 
         place_infos.append(place_info)
 
@@ -310,28 +303,51 @@ def get_kor_weather_info(latitude: float, longitude: float):
     # output in JSON format
     return json.dumps(weather_data, ensure_ascii=False)
 
-
-def get_place_header(place_id):
-
+def get_place_info(place_id, query=None):
     place_url = f"https://m.place.naver.com/place/{place_id}/home"
 
     driver = load_driver()
     place_info = {
+        # header
         'name': None,
         'type': None,
         'rating': None,
         'n_visitor_reviews': None,
         'n_blog_reviews': None,
+
+        # main
+        'description': None,
+        'address': None,
+        'operation_time': None,
+        'price': None,
+        'convenience': None,
+        'homepage': None,
+        'phone': None,
+        'keyword': None,
+
+        # review
+        'reviews': None,
     }
     
     driver.get(place_url)
 
-    # explicitly wait until the page is loaded
-    # driver.implicitly_wait(3)
     wait = WebDriverWait(driver, 10)
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.place_section")))
+    html = BeautifulSoup(driver.page_source, 'html.parser')
 
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    place_info.update(get_place_header(html))
+    place_info.update(get_place_main_info(html))
+    place_info.update(get_place_reviews(html, query))
+
+    driver.quit()
+
+    return place_info
+
+
+def get_place_header(html):
+    soup = BeautifulSoup(html, 'html.parser')
+
+    place_info = {}
 
     # name / description
     title_section = soup.find('div', {'id': '_title'})
@@ -353,39 +369,18 @@ def get_place_header(place_id):
             elif text.startswith('블로그리뷰') and (span.find('em') is not None):
                 place_info['n_blog_reviews'] = text.replace('블로그리뷰', '').strip()
 
-    driver.quit()
-
     return place_info
 
-def get_place_main_info(place_id):
+def get_place_main_info(html):
+    soup = BeautifulSoup(html, 'html.parser')
 
-    place_url = f"https://m.place.naver.com/place/{place_id}/home"
-
-    driver = load_driver()
-    driver.get(place_url)
-
-    # explicitly wait until the page is loaded
-    wait = WebDriverWait(driver, 10)
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.place_section")))
-
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    place_info = soup.find_all('div', class_='place_section_content')
-    if len(place_info) > 0:
-        place_info = place_info[0]
-    else:
-        return {
-            'description': None,
-            'address': None,
-            'operation_time': None,
-            'price': None,
-            'convenience': None,
-            'homepage': None,
-            'phone': None,
-            'keyword': None,
-        }
+    place_info = {}
+    place_section = soup.find_all('div', class_='place_section_content')
+    if not len(place_section) > 0:
+        return place_info
 
     # 주소
-    address_tag = place_info.find('span', text='주소')
+    address_tag = soup.find('span', text='주소')
     if address_tag:
         address = address_tag.parent.next_sibling.get_text().split('지도')[0].strip()
     else:
@@ -449,8 +444,6 @@ def get_place_main_info(place_id):
     else:
         description = None
 
-    driver.quit()
-
     place_info = {
         'description': description,
         'address': address,
@@ -463,17 +456,8 @@ def get_place_main_info(place_id):
     }
     return place_info
 
-def get_place_reviews(place_id, query=None):
-    place_url = f"https://m.place.naver.com/place/{place_id}/review/visitor"
-
-    driver = load_driver()
-    driver.get(place_url)
-
-    # explicitly wait until the page is loaded
-    wait = WebDriverWait(driver, 10)
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.place_section")))
-
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+def get_place_reviews(html, query=None):
+    soup = BeautifulSoup(html, 'html.parser')
 
     sections = soup.find_all('div', class_='place_section')
     review_section = None
@@ -491,7 +475,6 @@ def get_place_reviews(place_id, query=None):
             review = ' '.join([''.join(span.find_all(string=True, recursive=False)).strip() for span in spans])[:1000]
             reviews.append(review)
 
-    driver.quit()
     if len(reviews) > 0:
         if query is not None:
             reviews = summarize_reviews(reviews, query)
@@ -688,14 +671,7 @@ def kor_nearby_search_details(latitude, longitude, place_type, sort, goal, max_r
             'longitude': element.get_attribute('data-longitude'),
             'latitude': element.get_attribute('data-latitude'),
         }
-
-        place_header = get_place_header(place_id)
-        place_main_info = get_place_main_info(place_id)
-        place_review = get_place_reviews(place_id, query)
-
-        place_info.update(place_header)
-        place_info.update(place_main_info)
-        place_info.update(place_review)
+        place_info.update(get_place_info(place_id))
 
         return place_info
 
@@ -746,14 +722,7 @@ def kor_nearby_search_summary(latitude, longitude, place_type, sort, goal, max_r
             'longitude': element.get_attribute('data-longitude'),
             'latitude': element.get_attribute('data-latitude'),
         }
-
-        place_header = get_place_header(place_id)
-        place_main_info = get_place_main_info(place_id)
-        place_review = get_place_reviews(place_id, query)
-
-        place_info.update(place_header)
-        place_info.update(place_main_info)
-        place_info.update(place_review)
+        place_info.update(get_place_info(place_id))
 
         return place_info
 
@@ -889,14 +858,7 @@ def kor_nearby_search_summary_and_save_details_to_file(latitude, longitude, plac
             'longitude': element.get_attribute('data-longitude'),
             'latitude': element.get_attribute('data-latitude'),
         }
-
-        place_header = get_place_header(place_id)
-        place_main_info = get_place_main_info(place_id)
-        place_review = get_place_reviews(place_id)
-
-        place_info.update(place_header)
-        place_info.update(place_main_info)
-        place_info.update(place_review)
+        place_info.update(get_place_info(place_id))
 
         return place_info
 
