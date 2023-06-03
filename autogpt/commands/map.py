@@ -165,13 +165,81 @@ def search_place_from_keyword_using_kakaoAPI(keyword, category_group_code=None, 
             'num_review': r['num_review'],
             'num_blog_reviews': r['num_blog_reviews'],
             'review': r['review'],
-            # 'latitude': r['x'], 
-            # 'longitude': r['y'], 
+            'latitude': r['x'], 
+            'longitude': r['y'], 
         } for r in results
     ]
 
     with open(filename, 'w') as f:
         f.write(str(results))
+    return f"Written to {filename}"
+
+@command(
+    "search_nearby_place_using_kakaoAPI_and_save_to_file",
+    "Search Nearby Place Using KakaoAPI's category_group_code And Save to File",
+    '"anchor_place_name": "<place_to_base_on>", "category_group_code": "<category_group_code_for_the_place_user_want_to_find>", "radius": "<radius_in_meters>", "filename": "<path_to_save_the_result_as_txt>"',
+)
+def search_nearby_place_using_kakaoAPI(anchor_place_name, category_group_code, radius, filename):
+    api_key = CFG.kakao_api_key
+    url = "https://dapi.kakao.com/v2/local/search/keyword.json"
+    size = 1
+
+    headers = {
+        "Authorization": f"KakaoAK {api_key}"
+    }
+    params = {
+        "query": anchor_place_name,
+        "size": size,
+    }
+    response = requests.get(url, headers=headers, params=params)
+    result = response.json()['documents'][0]
+
+    # get nearby place
+    url = "https://dapi.kakao.com/v2/local/search/category.json"
+    size = 3
+    lat = result['x']
+    lon = result['y']
+    params = {
+        "category_group_code": category_group_code,
+        "size": size,
+        "x": lat,
+        "y": lon,
+        "radius": radius,
+    }
+    response = requests.get(url, headers=headers, params=params)
+    result = response.json()['documents']
+    print(result)
+
+    result = response.json()['documents']
+
+    if len(result) == 0:
+        return "There are no results. Please suggest another category_group_code."
+
+    with ThreadPoolExecutor(max_workers=size) as executor:
+        ret = list(executor.map(get_place_info, [r['place_url'] for r in result]))
+        ret = zip(*ret)
+
+    for r, rating, num_review, num_blog_reviews, review in zip(result, *ret):
+        r['rating'] = rating
+        r['num_review'] = num_review
+        r['num_blog_reviews'] = num_blog_reviews
+        r['review'] = review
+
+    result = [
+        {
+            'place_name': r['place_name'],
+            'place_url': r['place_url'],
+            'rating': r['rating'],
+            'num_review': r['num_review'],
+            'num_blog_reviews': r['num_blog_reviews'],
+            'review': r['review'],
+            'latitude': r['x'], 
+            'longitude': r['y'], 
+        } for r in result
+    ]
+
+    with open(filename, 'w') as f:
+        f.write(str(result))
     return f"Written to {filename}"
 
 @command(
