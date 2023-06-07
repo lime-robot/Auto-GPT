@@ -28,7 +28,7 @@ def truncate_text(text, max_tokens):
 
 def translate_section(section, language):
     response = create_chat_completion([{"role": "system", "content": f'Please translate markdown text to {language}. Keep special tokens intact, such as "#".'}, 
-                                       {"role": "user", "content": section}], model=CFG.fast_llm_model, temperature=0)
+                                       {"role": "user", "content": section}], model=CFG.fast_llm_model, temperature=0.5)
     return response
 
 def translate_md(md, language):
