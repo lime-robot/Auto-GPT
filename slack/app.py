@@ -18,21 +18,11 @@ from slack_sdk.signature import SignatureVerifier
 from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
 from tenacity import retry, stop_after_attempt, wait_random_exponential, RetryError
 
-load_dotenv('../.env')
-
 app = FastAPI()
-
-rate_limit_handler = RateLimitErrorRetryHandler(max_retry_count=1)
-signature_verifier = SignatureVerifier(
-    signing_secret=os.environ["SLACK_SIGNING_SECRET"]
-)
-
-client = WebClient(token=os.getenv("SLACK_BOT_TOKEN"))
-client.retry_handlers.append(rate_limit_handler)
 
 thread_ts2pids = defaultdict(list)
 
-def user_message2ai_settings(user_message, api_budget=1, infer=False):
+def user_message2ai_settings(user_message, api_budget=1, infer=False, openai_api_key=None):
     if infer:
         prompt = f"""
 An AI bot will handle given request. Provide name, role and goals for the AI assistant in JSON format with following keys:
@@ -79,7 +69,7 @@ Response:
             model='gpt-3.5-turbo',
             messages=[{'role': 'user', 'content': prompt}],
             temperature=0,
-            api_key=os.getenv('OPENAI_API_KEY')
+            api_key=openai_api_key,
         )
         data = json.loads(response.choices[0]['message']['content'])
         ai_goals_str = '\n'.join(['- ' + goal for goal in  data['ai_goals']])
@@ -120,7 +110,8 @@ def format_stdout(stdout):
 
 def process_user_message(user_message):
     # Remove @AutoAskUp from message
-    user_message = user_message.replace('<@U058EM1SCEQ>', '').strip()
+    mention_pattern = r'^<@U[A-Z0-9]+>'
+    user_message = re.sub(mention_pattern, '', user_message).strip()
     # Extract options from message
     options = {
         'debug': False,
@@ -145,7 +136,7 @@ def process_user_message(user_message):
     return user_message, options
 
 @retry(wait=wait_random_exponential(min=1, max=10), stop=stop_after_attempt(6))
-def upload_files(channel, thread_ts, fname, file):
+def upload_files(client, channel, thread_ts, fname, file):
     upload_text_file = client.files_upload(
         channels=channel,
         thread_ts=thread_ts,
@@ -154,7 +145,7 @@ def upload_files(channel, thread_ts, fname, file):
     )
     return upload_text_file
 
-def run_autogpt_slack(user_message, options, channel, thread_ts):
+def run_autogpt_slack(client, user_message, options, channel, thread_ts, openai_api_key=None):
     
     # Make workspace folder and write ai_settings.yaml in it
     now = datetime.datetime.now()
@@ -164,7 +155,7 @@ def run_autogpt_slack(user_message, options, channel, thread_ts):
     workspace_name = date_str + "_" + random_str
     workspace = os.path.join(os.getcwd(), 'auto_gpt_workspace', workspace_name)
     os.makedirs(workspace, exist_ok=True)
-    ai_settings = user_message2ai_settings(user_message, options['api_budget'])
+    ai_settings = user_message2ai_settings(user_message, options['api_budget'], openai_api_key=openai_api_key)
     with open(os.path.join(workspace, "ai_settings.yaml"), "w") as f:
         f.write(ai_settings)
 
@@ -254,7 +245,7 @@ def run_autogpt_slack(user_message, options, channel, thread_ts):
             if fname not in ['ai_settings.yaml', 'auto-gpt.json', 'file_logger.txt']:
                 file = os.path.join(root, fname)
                 try:
-                    upload_files(channel, thread_ts, fname, file)
+                    upload_files(client, channel, thread_ts, fname, file)
                 except RetryError as e:
                     print(f"Error uploading file {file} to channel:{channel} / thread_ts:{thread_ts}")
 
@@ -274,25 +265,41 @@ def run_autogpt_slack(user_message, options, channel, thread_ts):
 
 @app.post("/")
 async def slack_events(request: Request, background_tasks: BackgroundTasks):
+
     # Get the request body and headers
     body = await request.body()
     headers = request.headers
     print('BODY', body)
     print('HEADER', headers)
-    # if body.challenge:
-    #     return JSONResponse(content=body.challenge) 
+    data = json.loads(body)
+
+    if data.get("type") == "url_verification":
+        # Respond with the challenge value if the event is a challenge
+        challenge = data.get("challenge")
+        return {"challenge": challenge}
+
+    # Load secrets
+    app_id = data['api_app_id']
+    with open('secrets.json', 'r') as f:
+        secrets = json.load(f)[app_id]
+    
+    # Prepare slack client
+    client = WebClient(token=secrets["SLACK_BOT_TOKEN"])
+    rate_limit_handler = RateLimitErrorRetryHandler(max_retry_count=1)
+    client.retry_handlers.append(rate_limit_handler)
 
     # Avoid replay attacks
     if abs(time.time() - int(headers.get('X-Slack-Request-Timestamp'))) > 60 * 5:
         raise HTTPException(status_code=401, detail="Invalid timestamp")
 
+    # Verify signature
+    signature_verifier = SignatureVerifier(signing_secret=secrets["SLACK_SIGNING_SECRET"])
     if not signature_verifier.is_valid(
             body=body,
             timestamp=headers.get("X-Slack-Request-Timestamp"),
             signature=headers.get("X-Slack-Signature")):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    data = json.loads(body)
     user_message, options = process_user_message(data['event']['text'])
     event = data['event']  
     thread_ts = event['thread_ts'] if 'thread_ts' in event else event['ts']
@@ -312,12 +319,12 @@ async def slack_events(request: Request, background_tasks: BackgroundTasks):
         print('thread_ts2pids', thread_ts2pids)
         client.chat_postMessage(
             channel=event['channel'],
-            text="AutoGPT is stopped.",
+            text="AutoGPT stopped.",
             thread_ts=thread_ts
         )
-        return JSONResponse(content="AutoGPT is stopped.")
+        return JSONResponse(content="AutoGPT stopped.")
     
-    background_tasks.add_task(run_autogpt_slack, user_message, options, event['channel'], thread_ts)
+    background_tasks.add_task(run_autogpt_slack, client, user_message, options, event['channel'], thread_ts, secrets['OPENAI_API_KEY'])
     start_message = "Preparing to launch AutoGPT..."
     if options['debug']:
         start_message += " (in DEBUG MODE)"
