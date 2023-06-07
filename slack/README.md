@@ -1,10 +1,22 @@
 # Slack Bot for Auto GPT
 
 1. Create Slack Bot.
-2. Add keys to Auto GPT `.env` file at **Auto-GPT(parent) directory**.
-    ```
-    SLACK_SIGNING_SECRET=
-    SLACK_BOT_TOKEN=
+2. Add `secrets.json` to slack folder. Keys are App ID from App Credentials.
+    ```json
+    {
+        "A058~~": {
+            "WORKSPACE_NAME": "Test1",
+            "OPENAI_API_KEY": "sk-~~",
+            "SLACK_SIGNING_SECRET": "~~",
+            "SLACK_BOT_TOKEN": "xoxb-~~"
+        },
+        "A05B~~": {
+            "WORKSPACE_NAME": "Test2",
+            "OPENAI_API_KEY": "sk-~~",
+            "SLACK_SIGNING_SECRET": "~~",
+            "SLACK_BOT_TOKEN": "xoxb-~~"
+        }
+    }
     ```
 3. Install Auto GPT requirements at **Auto-GPT(parent) directory**.
     ```
