@@ -93,7 +93,8 @@ api_budget: {api_budget}
 """
     else:
         user_messages = user_message.split('\n')
-        goals = [f"- {user_message}" for user_message in user_messages if user_message != ""]
+        user_messages = [user_message.replace('"', '\\"') for user_message in user_messages]
+        goals = [f'- "{user_message}"' for user_message in user_messages if user_message != ""]
         goals = '\n'.join(goals)
         ai_settings = f"""ai_name: AutoAskUp
 ai_role: an AI that achieves below GOALS.
