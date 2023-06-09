@@ -1,10 +1,12 @@
 """Selenium web scraping module."""
 from __future__ import annotations
 
+import os
 import logging
 from pathlib import Path
 from sys import platform
 
+from colorama import Fore
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
@@ -25,6 +27,7 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
+from autogpt.logs import logger
 
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
@@ -57,11 +60,11 @@ def browse_website_and_extract_related_links(url: str, question: str) -> str:
         str: The answer and links to the user
     """    
     global URL_MEMORY
-    if url in URL_MEMORY: 
-        #print(url, '->', URL_MEMORY[url])
+    if url in URL_MEMORY:
         url = URL_MEMORY[url]    
-    
+
     try:
+        logger.typewriter_log("BROWSING: ", Fore.CYAN, url)
         html_content, driver = get_html_content_with_selenium(url)
     except WebDriverException as e:
         msg = e.msg.split("\n")[0]
@@ -79,9 +82,9 @@ def browse_website_and_extract_related_links(url: str, question: str) -> str:
 @command(
     "browse_website_and_extract_related_text",
     "Browse website and extract related text",
-    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+    '"url": "<url>", "question": "<what_you_want_to_find_on_website>, "filename": "<filename to save the text to>"',
 )
-def browse_website_and_extract_related_text(url: str, question: str) -> str:    
+def browse_website_and_extract_related_text(url: str, question: str, filename: str) -> str:    
     """Browse a website and return the hyperlinks related to the question
 
     Args:
@@ -93,10 +96,10 @@ def browse_website_and_extract_related_text(url: str, question: str) -> str:
     """    
     global URL_MEMORY
     if url in URL_MEMORY: 
-        print(url, '->', URL_MEMORY[url])
-        url = URL_MEMORY[url]    
-    
+        url = URL_MEMORY[url]
+
     try:
+        logger.typewriter_log("BROWSING: ", Fore.CYAN, url)
         driver, text = scrape_text_with_selenium(url)
     except WebDriverException as e:
         msg = e.msg.split("\n")[0]
@@ -112,20 +115,25 @@ def browse_website_and_extract_related_text(url: str, question: str) -> str:
 
     close_browser(driver)
 
-    return summary_text
+    with open(os.path.join(CFG.workspace_path, filename), "w") as f:
+        f.write(summary_text)
+    return_msg = f"Wrote following summary to {filename}:\n{summary_text}"
+
+    return return_msg
 
 
 @command(
     "get_webpage_text_summary",
     "Get webpage text summary",
-    '"url": "<url>", "question": "<question>"',
+    '"url": "<url>", "question": "<question>", "filename": "<filename to save the summary to>"',
 )
-def get_webpage_text_summary(url: str, question: str, max_len=3500) -> str:
+def get_webpage_text_summary(url: str, question: str, filename: str, max_len=3500) -> str:
     global URL_MEMORY
     if url in URL_MEMORY:
-        print(url, URL_MEMORY[url])
         url = URL_MEMORY[url]
+        
     try:
+        logger.typewriter_log("BROWSING: ", Fore.CYAN, url)
         html_content, driver = get_html_content_with_selenium(url)
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
@@ -147,7 +155,13 @@ def get_webpage_text_summary(url: str, question: str, max_len=3500) -> str:
     resp = create_chat_completion(
         model=CFG.fast_llm_model,
         messages=[{"role":"user", "content":request_msg}])
-    return f'Webpage summary: {resp}  '
+    
+    with open(os.path.join(CFG.workspace_path, filename), "w") as f:
+        f.write(resp)
+
+    return_msg = f'Wrote following webpage summary to {filename}:\n{resp}'
+
+    return return_msg
 
 
 def get_header_text_link_pairs(html_content, base_url='http:'):

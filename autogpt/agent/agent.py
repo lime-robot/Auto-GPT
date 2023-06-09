@@ -159,7 +159,7 @@ class Agent:
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
-                    arguments = self._resolve_pathlike_command_args(arguments)
+                    # arguments = self._resolve_pathlike_command_args(arguments)
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
@@ -264,7 +264,7 @@ class Agent:
                 
             # log used budget
             api_manager = ApiManager()
-            logger.typewriter_log("$ SPENT: ", Fore.YELLOW, str(round(api_manager.get_total_cost(), 5)))
+            logger.typewriter_log("$ SPENT: ", Fore.CYAN, str(round(api_manager.get_total_cost(), 5)))
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
@@ -319,15 +319,29 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
+
+            if api_manager.total_budget and (api_manager.get_total_cost() > api_manager.total_budget):
+                logger.typewriter_log("Budget exceeded. Exiting...", Fore.RED, "")
+                quit()
             
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
             command_args["directory"] = str(self.workspace.root)
         else:
-            for pathlike in ["filename", "directory", "clone_path"]:
+            for pathlike in ["directory", "clone_path"]:
                 if pathlike in command_args:
                     command_args[pathlike] = str(
                         self.workspace.get_path(command_args[pathlike])
+                    )
+            for command_arg in command_args:
+                if 'filenames' in command_arg:
+                    command_args[command_arg] = [
+                        str(self.workspace.get_path(filename))
+                        for filename in command_args[command_arg]
+                    ]
+                elif 'filename' in command_arg:
+                    command_args[command_arg] = str(
+                        self.workspace.get_path(command_args[command_arg])
                     )
         return command_args
 
