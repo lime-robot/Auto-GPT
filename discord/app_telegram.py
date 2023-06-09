@@ -9,7 +9,7 @@ from autogpt.logs import logger, update_logger
 from autogpt.main import run_auto_gpt
 from discord.ext import commands
 
-DISCORD_TOKEN: str | None = os.getenv("DISCORD_TOKEN")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 

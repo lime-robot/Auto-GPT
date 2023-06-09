@@ -3,3 +3,11 @@ discord.py
 langdetect
 pycountry
 trafilatura
+
+# For server
+uvicorn
+fastapi
+
+# For client
+websockets
+requests
