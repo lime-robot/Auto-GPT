@@ -16,6 +16,9 @@ sdk: $(VENV)/bin/activate
 
 wrapper: $(VENV)/bin/activate
 	$(PYTHON) auto_gpt_wrapper.py
+
+forem: $(VENV)/bin/activate
+	$(PYTHON) forem_post.py
 	
 $(VENV)/bin/activate: requirements.txt ../requirements.txt
 	python3 -m venv $(VENV)

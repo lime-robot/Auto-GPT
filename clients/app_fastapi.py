@@ -139,6 +139,8 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
     dollars_spent = 0
     while True:
         stdout = process.stdout.readline()
+        print(stdout)
+
         if (not stdout) and process.poll() is not None:
             break
         if not stdout:
@@ -147,6 +149,7 @@ async def websocket_endpoint(websocket: WebSocket, task_id: str):
         if output is None:
             continue
 
+        await websocket.send_text(output)
         if output.startswith("$ SPENT"):
             dollars_spent = output.split("$ SPENT:")[1].strip()
 
