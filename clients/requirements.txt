@@ -1,0 +1,16 @@
+discord.py
+
+langdetect
+pycountry
+trafilatura
+tenacity
+haversine
+pdfkit
+
+# For server
+uvicorn
+fastapi
+
+# For client
+websockets
+requests
