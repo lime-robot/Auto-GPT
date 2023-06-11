@@ -137,9 +137,9 @@ def results_to_md(workspace):
     return md_content
 
 if __name__ == '__main__':
-    title = "Sould I buy, sell, or hold Tesla stock?"
-    # md_content = autoaskup(title)
-    md_content = results_to_md("/home/ubuntu/Auto-GPT/clients/auto_gpt_workspace/2023-06-11_08-27-49_KFmnW")
+    title = "Sould I buy, sell, or hold Nvidia stock? Make decision and write MD report including referneces."
+    md_content = autoaskup(title)
+    # md_content = results_to_md("/home/ubuntu/Auto-GPT/clients/auto_gpt_workspace/2023-06-11_08-27-49_KFmnW")
 
     print("MO content\n", md_content)
         
@@ -148,7 +148,7 @@ if __name__ == '__main__':
         "title": title,
         "body_markdown": md_content,
         "published": True,
-        "series": "string",
+       # "series": "string",
         "tags": "autogpt",
         "organization_id": 0
     }
