@@ -54,3 +54,8 @@ pytest-mock
 vcrpy
 pytest-recording
 pytest-xdist
+
+trafilatura==1.6.0
+tenacity==8.2.2
+haversine==2.8.0
+pdfkit==1.0.0

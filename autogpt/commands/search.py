@@ -269,3 +269,8 @@ def news_search(keyword, goal, filename):
 def google(keyword, goal, filename):
     urls = get_urls(keyword, 'text', goal)
     return urls2summary(urls, goal, filename) + " If you feel the information is not sufficient, recommend calling news_search."
+
+if __name__ == "__main__":
+    driver = get_selenium_driver()
+    driver.quit()
+    print(google('Nvidia financial status', 'find financial status of Nvidia.', 'nvidia.yaml'))

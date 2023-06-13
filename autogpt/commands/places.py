@@ -53,6 +53,7 @@ def get_selenium_driver():
         else ChromeDriverManager().install(),
         options=options,
     )
+    driver.set_page_load_timeout(10)
     return driver
 
 def get_summarized_text(place, extra_question=''):
@@ -250,6 +251,8 @@ def search_places(search_keyword, filename, top_n=5, search_details=""):
     return return_msg
 
 if __name__ == '__main__':
+    driver = get_selenium_driver()
+    driver.quit()
     print(search_places('부산 여행지', 'busan_top5.yaml', top_n=5))
     
     #get_place_details('https://m.place.naver.com/place/11555552')
